@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICU Pre-Rounding Simulator</title>
+<style>
+  :root{
+    --blue:#1a4f8b; --blue-dark:#123a68; --blue-light:#e8f0fa;
+    --ink:#1c2733; --muted:#5b6b7c; --line:#d5dde6; --bg:#f2f5f8;
+    --card:#ffffff; --accent:#0e7c66; --warn:#b3261e; --low:#1155cc;
+    --gold:#8a6d00; --gold-bg:#fdf6df;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{font-family:"Segoe UI", system-ui, -apple-system, Arial, sans-serif; background:var(--bg); color:var(--ink); font-size:15px; line-height:1.45;}
+  button{font-family:inherit; cursor:pointer;}
+
+  /* ---------- header ---------- */
+  #topbar{background:var(--blue); color:#fff; display:flex; align-items:center; gap:14px; padding:8px 16px; position:sticky; top:0; z-index:50;}
+  #topbar h1{font-size:16px; font-weight:600; letter-spacing:.2px;}
+  #topbar .sub{font-size:12px; opacity:.75;}
+  #topbar .spacer{flex:1;}
+  #timer{font-variant-numeric:tabular-nums; font-size:13px; background:rgba(255,255,255,.12); padding:3px 10px; border-radius:12px; display:none;}
+  .topbtn{background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.35); color:#fff; border-radius:6px; padding:5px 12px; font-size:13px;}
+  .topbtn:hover{background:rgba(255,255,255,.26);}
+
+  /* ---------- generic ---------- */
+  .wrap{max-width:1400px; margin:0 auto; padding:18px;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:16px; box-shadow:0 1px 2px rgba(20,40,70,.05);}
+  h2{font-size:19px; margin-bottom:8px; color:var(--blue-dark);}
+  h3{font-size:15px; margin-bottom:6px; color:var(--blue-dark);}
+  p{margin-bottom:8px;}
+  .muted{color:var(--muted);}
+  .small{font-size:13px;}
+  ul.tight{margin:4px 0 8px 20px;}
+  ul.tight li{margin-bottom:4px;}
+  .btn{background:var(--blue); color:#fff; border:none; border-radius:7px; padding:9px 18px; font-size:14px; font-weight:600;}
+  .btn:hover{background:var(--blue-dark);}
+  .btn.secondary{background:#fff; color:var(--blue); border:1px solid var(--blue);}
+  .btn.secondary:hover{background:var(--blue-light);}
+  .btn.ghost{background:none; border:none; color:var(--muted); text-decoration:underline; font-weight:400; padding:6px;}
+  .flag-H{color:var(--warn); font-weight:700;}
+  .flag-L{color:var(--low); font-weight:700;}
+  .flag-C{color:var(--warn); font-weight:700; background:#fdecea; padding:0 4px; border-radius:3px;}
+
+  /* ---------- home ---------- */
+  .case-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px;}
+  .case-card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:8px; box-shadow:0 1px 2px rgba(20,40,70,.05);}
+  .case-card .bed{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px;}
+  .case-card .nm{font-size:17px; font-weight:700; color:var(--blue-dark);}
+  .case-card .dx{font-size:13.5px; color:var(--ink);}
+  .case-card .done-tag{font-size:12px; color:var(--accent); font-weight:600;}
+  .case-card button{margin-top:auto;}
+  details.framework{background:var(--blue-light); border:1px solid #c3d4ea; border-radius:10px; padding:12px 16px; margin-bottom:16px;}
+  details.framework summary{cursor:pointer; font-weight:600; color:var(--blue-dark);}
+  details.framework ol{margin:10px 0 4px 22px;}
+  details.framework li{margin-bottom:5px;}
+
+  /* ---------- sim layout ---------- */
+  #banner{background:#fff; border-bottom:2px solid var(--blue); padding:8px 16px; display:flex; flex-wrap:wrap; gap:6px 22px; align-items:baseline; position:sticky; top:41px; z-index:40;}
+  #banner .pname{font-size:17px; font-weight:700; color:var(--blue-dark);}
+  #banner .bfield{font-size:12.5px; color:var(--muted);}
+  #banner .bfield b{color:var(--ink); font-weight:600;}
+  #banner .allergy{color:var(--warn); font-weight:700;}
+  .sim-cols{display:flex; gap:0; align-items:stretch; height:calc(100vh - 118px);}
+  #chartpane{flex:1.35; min-width:0; display:flex; flex-direction:column; border-right:1px solid var(--line); background:var(--bg);}
+  #tplpane{flex:1; min-width:340px; max-width:560px; display:flex; flex-direction:column; background:#fbfcfe;}
+  .tabs{display:flex; flex-wrap:wrap; gap:2px; padding:8px 10px 0 10px; background:var(--bg); border-bottom:1px solid var(--line);}
+  .tab{border:1px solid var(--line); border-bottom:none; background:#e6ebf1; color:var(--muted); padding:6px 12px; font-size:13px; border-radius:7px 7px 0 0;}
+  .tab.active{background:#fff; color:var(--blue-dark); font-weight:600; border-color:#b9c6d4;}
+  #tabbody{flex:1; overflow-y:auto; padding:14px 16px; background:#fff;}
+  #tplpane .tpl-head{padding:10px 16px 6px 16px; border-bottom:1px solid var(--line); background:#fbfcfe;}
+  #tplpane .tpl-head h3{margin-bottom:2px;}
+  #tplbody{flex:1; overflow-y:auto; padding:12px 16px;}
+  .tpl-field{margin-bottom:12px;}
+  .tpl-field label{display:block; font-size:13px; font-weight:600; color:var(--blue-dark); margin-bottom:3px;}
+  .tpl-field textarea{width:100%; min-height:64px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; font:inherit; font-size:13.5px; resize:vertical; background:#fff;}
+  .tpl-field textarea:focus{outline:2px solid #9dbbe0; border-color:var(--blue);}
+  #tplfoot{padding:10px 16px; border-top:1px solid var(--line); display:flex; gap:10px; align-items:center; background:#fbfcfe;}
+  #savenote{font-size:12px; color:var(--muted);}
+
+  /* ---------- chart content ---------- */
+  table.chart{border-collapse:collapse; width:100%; font-size:13.5px; margin:8px 0 16px 0;}
+  table.chart th{background:var(--blue-light); color:var(--blue-dark); text-align:left; padding:6px 9px; border:1px solid #c9d6e6; font-size:12.5px; white-space:nowrap;}
+  table.chart td{padding:6px 9px; border:1px solid var(--line); vertical-align:top;}
+  table.chart tr:nth-child(even) td{background:#f7f9fc;}
+  .evt{display:flex; gap:12px; padding:8px 4px; border-bottom:1px solid #edf1f5;}
+  .evt .t{font-variant-numeric:tabular-nums; font-weight:600; color:var(--blue-dark); min-width:52px; font-size:13px;}
+  .evt .x{font-size:13.5px;}
+  .kv{display:grid; grid-template-columns:max-content 1fr; gap:4px 16px; font-size:13.5px; margin:6px 0 14px 0;}
+  .kv dt{color:var(--muted); font-weight:600;}
+  .med-sec{margin-bottom:14px;}
+  .med-sec h4{font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin-bottom:5px;}
+  .med{padding:6px 8px; border:1px solid var(--line); border-radius:6px; margin-bottom:5px; font-size:13.5px; background:#fff;}
+  .med b{color:var(--blue-dark);}
+  .med .mnote{color:var(--muted); font-size:12.5px;}
+  .note-card{border:1px solid var(--line); border-radius:8px; margin-bottom:12px; overflow:hidden;}
+  .note-card .nh{background:var(--blue-light); padding:6px 12px; font-size:12.5px; color:var(--blue-dark); display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;}
+  .note-card .nb{padding:10px 12px; font-size:13.5px; white-space:pre-wrap;}
+
+  /* ---------- score / checklist ---------- */
+  .chk-cat{font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:14px 0 6px 0; border-bottom:1px solid var(--line); padding-bottom:3px;}
+  .chk-item{display:flex; gap:10px; align-items:flex-start; padding:7px 8px; border-radius:7px; margin-bottom:4px;}
+  .chk-item:hover{background:var(--blue-light);}
+  .chk-item input{margin-top:4px; width:16px; height:16px; flex-shrink:0;}
+  .chk-item label{font-size:14px; cursor:pointer;}
+  .answers-review{background:#f7f9fc; border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px;}
+  .answers-review h4{font-size:13px; color:var(--blue-dark); margin:8px 0 2px 0;}
+  .answers-review .ans{font-size:13px; white-space:pre-wrap; color:var(--ink);}
+  .answers-review .ans.empty{color:#a3aeb9; font-style:italic;}
+  .score-big{font-size:40px; font-weight:800; color:var(--blue-dark);}
+  .missed{border-left:4px solid var(--warn); background:#fdf3f2; border-radius:0 8px 8px 0; padding:10px 14px; margin-bottom:10px;}
+  .missed .mt{font-weight:600; margin-bottom:3px;}
+  .missed .mw{font-size:13px; color:var(--muted);}
+  .gotit{border-left:4px solid var(--accent); background:#eef8f5; border-radius:0 8px 8px 0; padding:8px 14px; margin-bottom:8px; font-size:14px;}
+  .catbar{display:flex; align-items:center; gap:10px; margin-bottom:6px; font-size:13.5px;}
+  .catbar .cb-label{min-width:170px; color:var(--muted);}
+  .catbar .cb-track{flex:1; height:10px; background:#e3e9f0; border-radius:5px; overflow:hidden;}
+  .catbar .cb-fill{display:block; height:100%; background:var(--blue); border-radius:5px;}
+  .catbar .cb-num{min-width:44px; text-align:right; font-variant-numeric:tabular-nums;}
+
+  /* ---------- facilitator ---------- */
+  .fac-banner{background:var(--gold-bg); border:1px solid #e4d089; color:var(--gold); border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; margin-bottom:14px;}
+  .pearl{border-left:4px solid var(--blue); background:var(--blue-light); border-radius:0 8px 8px 0; padding:8px 14px; margin-bottom:8px; font-size:14px;}
+  .pitfall{border-left:4px solid var(--gold); background:var(--gold-bg); border-radius:0 8px 8px 0; padding:8px 14px; margin-bottom:8px; font-size:14px;}
+  .model-pres{background:#f7f9fc; border:1px solid var(--line); border-radius:8px; padding:14px 16px; font-size:14px; white-space:pre-wrap;}
+
+  /* ---------- 5-step guide ---------- */
+  .gstep{border:1px solid var(--line); border-radius:9px; margin-bottom:10px; background:#fff; overflow:hidden;}
+  .gstep .gh{background:var(--blue-light); padding:8px 12px; font-weight:700; color:var(--blue-dark); font-size:14px;}
+  .gstep .gh .gsub{font-weight:400; color:var(--muted); font-size:12.5px;}
+  .gstep .gb{padding:10px 14px; font-size:13.5px;}
+  .gstep .gb ul{margin:6px 0 4px 20px;}
+  .gstep .gb li{margin-bottom:3px;}
+  .gquote{font-weight:600; color:var(--blue-dark); margin-top:8px; font-size:13px;}
+  .gcredit{font-size:12px; color:var(--muted); text-align:right; margin-top:8px;}
+  #guideModal{display:none; position:fixed; inset:0; background:rgba(15,30,50,.45); z-index:100;}
+  #guideModal .gm-in{background:var(--bg); max-width:780px; margin:4vh auto; max-height:92vh; overflow-y:auto; border-radius:12px; padding:18px 22px; box-shadow:0 8px 40px rgba(0,0,0,.3);}
+  .abc-block{border:1px solid #cfe0d6; background:#f2f9f5; border-radius:8px; padding:10px 12px; margin-top:4px; margin-bottom:10px;}
+  .abc-block h4{font-size:13px; color:#0e6b46; margin-bottom:5px;}
+  .abc-block .abc-sub{font-size:12px; color:var(--muted); margin-bottom:6px;}
+  .abc-item{display:flex; gap:8px; align-items:flex-start; padding:3px 2px; font-size:13px; cursor:pointer;}
+  .abc-item input{margin-top:3px; flex-shrink:0;}
+  .abc-row{margin-bottom:7px;}
+  .abc-note{display:block; width:calc(100% - 24px); margin:2px 0 0 24px; border:1px solid var(--line); border-radius:5px; font-size:12px; padding:3px 8px; background:#fff; font-family:inherit;}
+  .abc-note:focus{outline:2px solid #9dbbe0; border-color:var(--blue);}
+  .foundtag{font-size:11px; color:var(--accent); border:1px solid #b5dccc; background:#eef8f4; border-radius:9px; padding:1px 7px; margin-left:8px; white-space:nowrap;}
+
+  @media (max-width: 980px){
+    .sim-cols{flex-direction:column; height:auto;}
+    #chartpane{border-right:none; border-bottom:2px solid var(--line);}
+    #tabbody{max-height:60vh;}
+    #tplpane{max-width:none;}
+    #banner{position:static;}
+  }
+  @media print{ #topbar,#tplfoot,.btn{display:none;} }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>ICU Pre-Rounding Simulator</h1>
+  <span class="sub">EM Intern Workshop &middot; fictional patients</span>
+  <span class="spacer"></span>
+  <span id="timer">00:00</span>
+  <button class="topbtn" onclick="showGuide()">5-Step Guide</button>
+  <button class="topbtn" onclick="goPatientList()">Patient List</button>
+</div>
+
+<div id="app"></div>
+<div id="guideModal" onclick="if(event.target===this)hideGuide()"><div class="gm-in"></div></div>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   TEMPLATE FIELDS (same structure for every case)
+===================================================================== */
+const TPL_FIELDS = [
+  {id:"neuro", label:"🧠 Neuro: sedation, RASS, CAM-ICU, neuro exam, sleep aids, delirium prevention",
+   ph:"Sedation drips and overnight changes, RASS vs. goal, delirium screen and prevention measures, sleep aids, exam (and what confounds it)..."},
+  {id:"cv", label:"❤️ CV: MAP, pressors, fluid balance",
+   ph:"MAP trend, pressor doses over the night (trajectory), rhythm, fluid balance..."},
+  {id:"resp", label:"🫁 Resp: vent settings, ABG, SBT candidate, secretions, incentive spirometer",
+   ph:"Mode, TV, rate, PEEP, FiO2: write them down. Overnight changes/alarms, gas trend, secretion management, incentive spirometry, anything blocking SAT/SBT..."},
+  {id:"renal", label:"💧 Renal: volume status, renal function/UOP, lytes, acid-base",
+   ph:"Volume status and net fluid balance, creatinine trend, urine output per hour, electrolytes needing repletion, acid-base..."},
+  {id:"gi", label:"🍽️ GI / Nutrition: feeding, bowel function and regimen, LFTs",
+   ph:"Diet/tube feeds (at goal? NPO and why?), bowel function and bowel regimen, LFTs, GI bleeding..."},
+  {id:"heme", label:"🩸 Heme/Onc: Hgb, plts, anticoag, DVT ppx",
+   ph:"Hgb/platelet trends, transfusions and thresholds, coags, anticoagulation, DVT prophylaxis..."},
+  {id:"id", label:"🦠 ID: abx day count, cultures, temp curve, WBC trend",
+   ph:"Each antibiotic and its day #, culture results and what's pending, Tmax/temp curve, WBC trend..."},
+  {id:"endo", label:"⚖️ Endo: glucose, insulin drip, steroids",
+   ph:"Glucose range, insulin coverage, steroid dose and day #..."},
+  {id:"msk", label:"🔧 MSK / Skin: wounds, DTIs, injuries",
+   ph:"Wounds, pressure areas, injuries, mobility..."}
+];
+
+/* =====================================================================
+   CASE DATA
+===================================================================== */
+const CASES = [
+
+/* ------------------------------------------------------------------ */
+/* CASE 1: SEPTIC SHOCK                                              */
+/* ------------------------------------------------------------------ */
+{
+id:"sepsis",
+listName:"Mills, Dorothy", bed:"MICU 12", ageSex:"68 F", mrn:"400-22-871",
+codeStatus:"Full code", allergies:"Penicillin (rash)", icuDay:2, admitted:"Yesterday 14:30 from ED",
+dxTeaser:"Multifocal pneumonia, septic shock on norepinephrine",
+tabs:{
+overview:{
+  oneLiner:"68-year-old woman with HTN and T2DM admitted from the ED yesterday afternoon with multifocal pneumonia and septic shock, now ICU day 2 on norepinephrine and broad-spectrum antibiotics.",
+  hpi:"Presented to the ED with 3 days of productive cough, fever, and progressive dyspnea. In the ED: T 39.2, HR 118, BP 82/48, lactate 4.2. Received 30 mL/kg crystalloid, blood cultures drawn, started on vancomycin + cefepime + azithromycin (PCN allergy = rash only; cefepime given without reaction). Norepinephrine started for persistent MAP < 65 after volume. Admitted to MICU on high-flow nasal cannula.",
+  pmh:["Hypertension","Type 2 diabetes (on metformin at home)","Hyperlipidemia","Former smoker, quit 10 years ago"],
+  course:"ICU day 1: norepinephrine titrated up to 18 mcg/min max, weaning since. Remained on HFNC, never intubated. Repeat lactate trending down. Overnight events per flowsheet."
+},
+events:[
+  {t:"19:30", x:"Family at bedside, updated by RN. Patient resting, oriented x3."},
+  {t:"22:00", x:"Repeat lactate resulted: 2.1 (from 4.2 on admission)."},
+  {t:"22:15", x:"Norepinephrine weaned 14 → 10 mcg/min per MAP goal ≥ 65."},
+  {t:"23:40", x:"Blood glucose 228, corrected per sliding scale."},
+  {t:"02:00", x:"Tmax 38.9 °C. Blood cultures x2 redrawn per fever protocol. Acetaminophen 650 mg given per PRN order."},
+  {t:"03:30", x:"Transient MAP 58 during repositioning; recovered to 67 within 2 minutes without intervention. Cross-cover MD aware."},
+  {t:"04:00", x:"Urine output 15-20 mL/hr for the last 3 hours (was 40-50 mL/hr on arrival). Cross-cover MD notified: 'will monitor, defer to day team.' No new orders placed."},
+  {t:"04:30", x:"AM labs drawn, including vancomycin trough before the 08:00 dose."},
+  {t:"05:30", x:"Norepinephrine weaned to 8 mcg/min. MAPs 66-70."},
+  {t:"06:00", x:"Patient dozing, arousable, no acute complaints. HFNC tolerated well."}
+],
+vitals:{
+  cols:["Time","T °C","HR","BP (MAP)","Norepi mcg/min","RR","SpO2","O2 support"],
+  rows:[
+    ["20:00","37.6","96","104/58 (68)","14","22","94%","HFNC 50 L / 60%"],
+    ["00:00","38.2","102","108/60 (70)","10","24","95%","HFNC 50 L / 60%"],
+    ["02:00",{v:"38.9",f:"H"},"110","100/55 (66)","10","26","93%","HFNC 50 L / 60%"],
+    ["04:00","38.1","98","98/56 (65)","10","22","95%","HFNC 50 L / 50%"],
+    ["06:00","37.4","92","102/58 (67)","8","20","96%","HFNC 50 L / 45%"]
+  ]
+},
+resp:{
+  kv:[
+    ["Current support","HFNC 50 L/min, FiO2 45% (weaned from 60% overnight)"],
+    ["Work of breathing","Mildly increased, speaking full sentences"],
+    ["Most recent gas","VBG 04:30: pH 7.36 / pCO2 38 / HCO3 21"],
+    ["Prior gas","VBG yesterday 15:00: pH 7.31 / pCO2 35 / HCO3 18"],
+    ["Never intubated",""]
+  ],
+  note:"RT: tolerating FiO2 wean. Suggest continued slow wean as tolerated."
+},
+labs:{
+  cols:["Test","Yesterday 15:00","Today 04:30"],
+  rows:[
+    ["WBC (K/µL)",{v:"18.4",f:"H"},{v:"21.2",f:"H"}],
+    ["Hgb (g/dL)",{v:"10.2",f:"L"},{v:"9.8",f:"L"}],
+    ["Platelets (K/µL)","210","165"],
+    ["Na (mmol/L)",{v:"134",f:"L"},{v:"133",f:"L"}],
+    ["K (mmol/L)","4.0","4.4"],
+    ["HCO3 (mmol/L)",{v:"18",f:"L"},{v:"21",f:"L"}],
+    ["BUN (mg/dL)","24",{v:"38",f:"H"}],
+    ["Creatinine (mg/dL)","1.1",{v:"1.9",f:"H"}],
+    ["Glucose (mg/dL)",{v:"188",f:"H"},{v:"210",f:"H"}],
+    ["Magnesium (mg/dL)","1.9",{v:"1.5",f:"L"}],
+    ["Lactate (mmol/L)",{v:"4.2 → 2.1 (22:00)",f:"H"},"1.4"],
+    ["Vancomycin trough (µg/mL)","--",{v:"28",f:"C"}],
+    ["Procalcitonin (ng/mL)",{v:"12.4",f:"H"},"--"]
+  ],
+  note:"Critical value called at 05:10: vancomycin trough 28 µg/mL. Next vancomycin dose scheduled 08:00."
+},
+meds:{
+  drips:[
+    {n:"Norepinephrine", d:"8 mcg/min (max 18 overnight, actively weaning)", note:"Titrate to MAP ≥ 65"}
+  ],
+  sched:[
+    {n:"Vancomycin", d:"1.25 g IV q12h; next dose 08:00", note:"Day 2. AM trough 28 (supratherapeutic)"},
+    {n:"Cefepime", d:"2 g IV q8h", note:"Day 2. Dosed for normal renal function"},
+    {n:"Azithromycin", d:"500 mg IV daily", note:"Day 2 of 5"},
+    {n:"Insulin lispro sliding scale", d:"AC + HS", note:""},
+    {n:"Heparin", d:"5,000 units SQ q8h", note:"VTE prophylaxis"},
+    {n:"Acetaminophen", d:"650 mg PO q6h PRN fever/pain", note:"Given 02:00"}
+  ],
+  held:[
+    {n:"Lisinopril 20 mg daily", d:"HELD", note:"Shock"},
+    {n:"Metformin 1000 mg BID", d:"HELD", note:"Acute illness / renal function"}
+  ]
+},
+io:{
+  kv:[
+    ["In (last 24 h)","5,100 mL (crystalloid boluses, maintenance, antibiotics)"],
+    ["Out (last 24 h)","900 mL (urine 850 mL, down-trending: 15-20 mL/hr x3h)"],
+    ["Net (24 h)","+4,200 mL"],
+    ["Cumulative since admission","+6,800 mL"],
+    ["Weight","81.2 kg (admission 78.5 kg)"]
+  ],
+  lines:[
+    "Right IJ central line, day 2, dressing clean/dry/intact",
+    "Left radial arterial line, day 2",
+    "Foley catheter, day 2",
+    "Peripheral IV x1, right forearm, day 2"
+  ]
+},
+micro:[
+  {t:"Blood cultures x2 (admission, yesterday 13:50)", x:"PRELIMINARY: Gram-negative rods in 2/2 bottles. Identification and sensitivities pending."},
+  {t:"Blood cultures x2 (overnight, 02:00)", x:"Pending; no growth to date."},
+  {t:"Sputum culture (admission)", x:"Pending. Gram stain: many WBC, gram-negative rods."},
+  {t:"Urine strep pneumo / Legionella antigens", x:"Negative / Negative."},
+  {t:"Respiratory viral panel incl. influenza, COVID", x:"Negative."},
+  {t:"Portable CXR (this AM, 05:45)", x:"Multifocal consolidation right lower and middle lobes, slightly increased from admission. Small left pleural effusion. No pneumothorax. Central line tip at cavoatrial junction."}
+],
+notes:[
+  {title:"Admission H&P (excerpt)", who:"MICU admitting resident", when:"Yesterday 16:00",
+   body:"A/P: 68F with septic shock secondary to multifocal community-acquired pneumonia.\n#Septic shock: norepi to MAP 65, lactate-guided resuscitation, broad coverage with vanc/cefepime/azithro given severity, de-escalate with culture data.\n#Multifocal PNA: HFNC, escalate if tiring.\n#T2DM: hold metformin, sliding scale.\n#HTN: hold lisinopril."},
+  {title:"Cross-cover event note", who:"Night float resident", when:"04:10 today",
+   body:"Called by RN for urine output 15-20 mL/hr x3 hours in patient with septic shock, improving pressor requirement. Foley flushed and patent. Exam unchanged. Given overall improving picture, will not bolus overnight; day team to reassess volume status and renal function in AM."}
+],
+},
+checklist:[
+  {sys:"id", text:"New fever to 38.9 °C at 02:00 with repeat blood cultures drawn", why:"A new fever on day 2 of antibiotics raises the questions rounds must answer: is the source controlled, is coverage right, are the new cultures being followed?"},
+  {sys:"renal", text:"Urine output down-trending to 15-20 mL/hr; cross-cover was called and explicitly deferred to the day team", why:"This is an inherited problem, the classic pre-rounding trap. If you don't surface it, nobody owns it. It needs a volume status assessment and a plan this morning."},
+  {sys:"cv", text:"Norepinephrine weaned 14 → 8 mcg/min with MAPs holding ≥ 65", why:"The trajectory (improving, actively weaning) is the headline of your presentation and drives today's plan: continue the wean, anticipate coming off pressors."},
+  {sys:"cv", text:"Transient MAP 58 with repositioning only, self-resolved and appropriately not treated", why:"Contextualizing a blip prevents overreaction. Knowing about it means you won't be surprised when the attending sees it on the flowsheet."},
+  {sys:"renal", text:"New AKI: creatinine 1.1 → 1.9 with rising BUN", why:"A near-doubling of creatinine changes drug dosing (vancomycin, cefepime), informs the fluid conversation, and needs a cause (septic ATN vs. drug vs. prerenal)."},
+  {sys:"id", text:"Vancomycin trough 28 with the next dose due at 08:00; the dose should be held or adjusted before rounds", why:"This is the time-sensitive action of the morning. If you pre-round at 07:00 and don't check med timing, the supratherapeutic dose infuses while you're still rounding."},
+  {sys:"id", text:"Blood cultures growing gram-negative rods in 2/2 bottles, speciation pending", why:"Confirms the empiric gram-negative coverage matters and sets up today's de-escalation discussion once sensitivities return."},
+  {sys:"cv", text:"Lactate cleared: 4.2 → 2.1 → 1.4", why:"Objective evidence resuscitation worked, and it belongs in your assessment of shock trajectory."},
+  {sys:"renal", text:"Magnesium 1.5 needs repletion", why:"Small, easily-missed actionable item. Collecting these is exactly what pre-rounding is for."},
+  {sys:"id", text:"WBC rising 18.4 → 21.2 and CXR slightly worse", why:"Worsening numbers against an improving clinical picture (weaning pressors, clearing lactate) is a nuance worth presenting honestly rather than cherry-picking."},
+  {sys:"renal", text:"Net +4.2 L in 24 h, +6.8 L cumulative, weight up ~3 kg", why:"Sets up the de-resuscitation conversation. In a patient now weaning pressors with falling urine output, volume status is the debate of the day."},
+  {sys:"cv", text:"Home lisinopril and metformin held, still appropriate given shock and new AKI", why:"Med reconciliation is part of every pre-round; here the holds are correct and worth stating, especially metformin with a creatinine of 1.9."}
+],
+debrief:{
+  pitfalls:[
+    "The vancomycin trough of 28 with a dose due at 08:00 is the planted time bomb. Interns who review labs but never open the MAR (or check dose timing) miss the one action that can't wait for rounds.",
+    "The urine output call at 04:00 was deliberately 'punted' by the cross-cover. Interns often read the event and move on; the skill is recognizing an unresolved problem they now own.",
+    "The worsening WBC and CXR are a bait for one-sided presentations. Strong interns present the discordance (clinically better, numbers worse) rather than filtering to one narrative."
+  ],
+  pearls:[
+    "Pre-rounding is about trajectory, not snapshots: pressor dose over time, lactate clearance, urine output trend.",
+    "Always cross-check drips and drug levels against the MAR and dose timing; labs without the MAR is half a pre-round.",
+    "Fluid balance (24-hour and cumulative) should be a reflex number you can quote on every ICU patient.",
+    "Hunt for 'inherited problems': anything the night team was called about but deferred is now yours."
+  ],
+  discussion:[
+    "What would you do about the 08:00 vancomycin dose, and who do you call: pharmacy, the fellow, or just hold it?",
+    "Is this patient's oliguria prerenal, septic ATN, or drug-related, and what at the bedside helps you decide?",
+    "She's +6.8 L cumulative and weaning pressors. What does day-2 de-resuscitation look like in practice?"
+  ],
+  model:"Mrs. Mills is our 68-year-old with multifocal pneumonia and septic shock, ICU day 2, and the overall story is she's getting better hemodynamically but her kidneys are the new problem.\n\nOvernight she spiked to 38.9 (cultures were redrawn), and norepi was weaned from 14 to 8 with MAPs holding above 65. Lactate has cleared from 4.2 to 1.4. The concerning trend is urine output down to 15-20 an hour for three hours; cross-cover was called and deferred to us, and her creatinine is up from 1.1 to 1.9. She's net positive 4.2 liters for the day, almost 7 total.\n\nOn labs, WBC is up to 21 and the CXR looks slightly worse, though she's clinically improved and down to 45% on high-flow. Admission blood cultures are growing gram-negative rods, ID pending. Her vanc trough came back at 28, so I've asked for the 08:00 dose to be held and pharmacy to redose; that plus the AKI is my main med issue. Magnesium is 1.5 and needs repletion.\n\nMy plan by system:\nNeuro: alert and oriented, no delirium concerns; continue reorientation and sleep protection.\nCV: continue the norepi wean to off, MAP goal 65 or above; stop maintenance fluids. Question for the team: start gentle diuresis today given she is almost 7 liters positive?\nResp: continue the slow HFNC FiO2 wean as tolerated.\nRenal: new AKI, likely septic ATN versus prerenal; bedside volume status assessment for the oliguria, follow urine output hourly, and replete the magnesium of 1.5.\nHeme: Hgb 9.8, no transfusion trigger; continue heparin DVT prophylaxis.\nID: hold the 08:00 vancomycin and redose with pharmacy off the trough of 28, ask whether cefepime needs renal adjustment, follow culture speciation for de-escalation, azithromycin day 2 of 5, follow the overnight cultures.\nEndo: glucoses in the 200s on sliding scale; metformin stays held with the new AKI.\n\nICU Liberation checklist: pain controlled, no complaints. No sedation running and never intubated, so no SAT/SBT needed. Mental status intact, CAM-ICU negative. Mobility: up to the chair today as the pressors come off. Family was updated at the bedside last evening. DVT prophylaxis on with heparin SQ. Stress ulcer prophylaxis not indicated off the ventilator. Lines: the central line and arterial line can come out once she is off norepi; the Foley stays for now because I need hourly urine output for the oliguria, and it comes out as soon as that resolves."
+}
+},
+
+/* ------------------------------------------------------------------ */
+/* CASE 2: POST-ARREST                                               */
+/* ------------------------------------------------------------------ */
+{
+id:"arrest",
+listName:"Webb, Marcus", bed:"MICU 4", ageSex:"54 M", mrn:"400-31-556",
+codeStatus:"Full code", allergies:"NKDA", icuDay:2, admitted:"Yesterday 10:15 via cath lab",
+dxTeaser:"Out-of-hospital VF arrest, s/p PCI to LAD, intubated, on active fever prevention",
+tabs:{
+overview:{
+  oneLiner:"54-year-old man with out-of-hospital VF arrest (ROSC after 18 minutes), emergent PCI with drug-eluting stent to the proximal LAD, now ICU day 2, intubated, on active temperature control for fever prevention (72-hour target post-ROSC).",
+  hpi:"Collapsed at work; bystander CPR started within ~2 minutes, AED delivered 2 shocks for VF. EMS: 1 additional shock, ROSC at approximately 18 minutes total downtime. ECG post-ROSC: anterior STEMI. Straight to cath lab: 100% proximal LAD occlusion, one drug-eluting stent placed via right femoral access. Intubated peri-arrest. Surface temperature-control device started on ICU arrival with a normothermia target (active fever prevention for 72 hours post-ROSC).",
+  pmh:["Hyperlipidemia (untreated)","Tobacco use, 1 ppd","Family history: father with MI at age 50"],
+  course:"ICU day 1: normothermic on the surface temperature-control device, shivering controlled, briefly on low-dose norepinephrine (weaned off 23:00). Echo yesterday: EF 30%, anterior wall hypokinesis. Overnight events per flowsheet."
+},
+events:[
+  {t:"20:00", x:"Temperature-control device maintaining 36.8 °C. Mild shivering managed with counter-warming and PRN meperidine per protocol."},
+  {t:"23:00", x:"Norepinephrine weaned off. MAPs 72-80 unsupported."},
+  {t:"03:15", x:"K resulted 3.1; repleted with 40 mEq KCl IV per protocol. Repeat pending with AM labs."},
+  {t:"04:30", x:"Bilateral rhythmic myoclonic jerking of the arms and face observed for ~2 minutes, self-resolved. Neurology paged; stat continuous EEG ordered, tech en route, not yet connected. Cross-cover at bedside."},
+  {t:"04:45", x:"Midazolam 2 mg IV x1 given for recurrent brief jerking; propofol increased 30 → 50 mcg/kg/min. No further events since."},
+  {t:"05:00", x:"Temperature-control device discontinued and pads removed by night staff, reported as 'cooling protocol complete.' No discontinuation order found in the chart."},
+  {t:"06:00", x:"Temp 37.8 °C and up-trending since the device came off. Femoral access site soft, no hematoma, distal pulses intact (q4h checks documented)."}
+],
+vitals:{
+  cols:["Time","T °C","HR","BP (MAP)","RR (vent)","SpO2","Notes"],
+  rows:[
+    ["20:00","36.8","88","112/64 (78)","18","98%","Device at normothermia target"],
+    ["00:00","36.9","84","110/62 (76)","18","98%",""],
+    ["02:00","36.9","80","108/60 (74)","18","97%",""],
+    ["04:00","37.1","78","106/58 (72)","18","98%",""],
+    ["06:00",{v:"37.8",f:"H"},"74","110/62 (76)","18","98%","Up-trending; device off since 05:00"]
+  ]
+},
+resp:{
+  kv:[
+    ["Mode","Volume assist-control"],
+    ["Tidal volume","450 mL (6 mL/kg predicted body weight)"],
+    ["Set rate / total rate","18 / 18 (no spontaneous effort over the set rate)"],
+    ["PEEP / FiO2","5 / 40%"],
+    ["Peak / plateau","24 / 18 cm H2O"],
+    ["ABG 05:00","7.36 / 42 / 98 on current settings"],
+    ["ETT","7.5, 23 cm at the lip, position confirmed on CXR"]
+  ],
+  note:"RT: no overnight vent changes. Suctioned small amounts of clear secretions."
+},
+labs:{
+  cols:["Test","Yesterday 12:00","Yesterday 18:00","Today 05:00"],
+  rows:[
+    ["hs-Troponin (ng/L)",{v:"8,400",f:"H"},{v:"15,600",f:"H"},{v:"12,900",f:"H"}],
+    ["K (mmol/L)","3.6",{v:"3.1",f:"L"},"3.9"],
+    ["Magnesium (mg/dL)","1.9","--",{v:"1.7",f:"L"}],
+    ["Creatinine (mg/dL)","1.3","--","1.2"],
+    ["Lactate (mmol/L)",{v:"3.8",f:"H"},"2.2","1.6"],
+    ["Glucose (mg/dL)",{v:"240",f:"H"},{v:"198",f:"H"},{v:"182",f:"H"}],
+    ["WBC (K/µL)",{v:"14.2",f:"H"},"--",{v:"12.8",f:"H"}],
+    ["Hgb (g/dL)","13.8","--","12.9"],
+    ["Platelets (K/µL)","240","--","218"]
+  ],
+  note:"12-lead ECG this AM (06:15): sinus rhythm 74, anterior Q waves, QTc 496 ms (yesterday post-cath: 452 ms)."
+},
+meds:{
+  drips:[
+    {n:"Propofol", d:"50 mcg/kg/min (increased from 30 at 04:45)", note:"RASS target -2; increased for myoclonic jerking"},
+    {n:"Fentanyl", d:"50 mcg/hr", note:""},
+    {n:"Amiodarone", d:"0.5 mg/min continuous", note:"Started post-arrest for VF; bolused in field/lab. Day 2"}
+  ],
+  sched:[
+    {n:"Aspirin", d:"81 mg per OG daily", note:"Given 06:00 ✓"},
+    {n:"Ticagrelor", d:"90 mg per OG q12h", note:"Post drug-eluting stent. Given 06:00 ✓"},
+    {n:"Atorvastatin", d:"80 mg per OG nightly", note:""},
+    {n:"Insulin regular sliding scale", d:"q6h", note:"Last dose 4 units at 00:00"},
+    {n:"Heparin", d:"5,000 units SQ q8h", note:"VTE prophylaxis (no therapeutic anticoagulation post-PCI)"},
+    {n:"Chlorhexidine oral care", d:"q12h", note:"Vent bundle"}
+  ],
+  held:[]
+},
+io:{
+  kv:[
+    ["In (last 24 h)","2,900 mL"],
+    ["Out (last 24 h)","1,100 mL (urine)"],
+    ["Net (24 h)","+1,800 mL"],
+    ["OG tube","In place, position confirmed; trophic tube feeds started 04:00"]
+  ],
+  lines:[
+    "Right radial arterial line, day 2",
+    "Right femoral arterial sheath REMOVED in cath lab; site checks q4h documented, no hematoma",
+    "Left IJ central line, day 2",
+    "Foley catheter, day 2",
+    "ETT 7.5, day 2"
+  ]
+},
+micro:[
+  {t:"Blood cultures", x:"None sent."},
+  {t:"Echo (yesterday 16:00)", x:"EF 30%. Anterior and apical hypokinesis. No LV thrombus seen. Mild MR. No pericardial effusion."},
+  {t:"CXR (this AM 05:30)", x:"ETT 4 cm above carina. OG tube in stomach. Mild pulmonary vascular congestion, improved from yesterday. No consolidation."},
+  {t:"CT head (yesterday, post-cath)", x:"No hemorrhage, no established infarct, gray-white differentiation preserved."},
+  {t:"Continuous EEG", x:"ORDERED 04:30, stat. Tech paged; not yet connected as of 06:30."}
+],
+notes:[
+  {title:"Cardiology post-PCI note (excerpt)", who:"Interventional fellow", when:"Yesterday 12:30",
+   body:"Successful primary PCI: 1 DES to 100% proximal LAD occlusion. TIMI 3 flow. Plan: DAPT (ASA + ticagrelor) without interruption, high-intensity statin, amiodarone per ICU for VF, echo, no therapeutic anticoagulation indicated. Will follow."},
+  {title:"Cross-cover event note", who:"Night resident", when:"05:00 today",
+   body:"Called to bedside 04:30 for rhythmic bilateral myoclonic jerking ~2 min, self-resolving, then briefly recurrent. Ddx includes post-anoxic myoclonus vs seizure; cannot distinguish clinically. Neurology paged, stat cEEG ordered. Midazolam 2 mg x1 given, propofol increased 30→50 with no further visible activity. Of note this will confound the morning neuro exam. Day team to follow EEG hookup and neuro recs."},
+  {title:"Neuro exam (nursing, 06:00, on propofol 50)", who:"RN flowsheet", when:"06:00 today",
+   body:"Pupils 3 mm, equal, briskly reactive. Corneals present. No eye opening to voice or noxious stimulus. Withdraws upper extremities to nailbed pressure. No following commands. RASS -4."}
+],
+},
+checklist:[
+  {sys:"neuro", text:"Myoclonic jerking at 04:30 with stat EEG ordered, and still NOT connected as of 06:30", why:"Post-anoxic myoclonus vs. seizure can't be distinguished at the bedside. The pre-rounder's job is to notice the EEG was ordered stat two hours ago and still isn't on; that follow-up gap is yours to close."},
+  {sys:"neuro", text:"Temperature-control device removed at 05:00 without an order, roughly 20 hours post-ROSC; temp now 37.8 and rising", why:"Fever after cardiac arrest worsens neurologic outcome. Current post-arrest care is active fever prevention for at least 72 hours after ROSC in comatose survivors, so the device needs to go back on this morning, not at noon."},
+  {sys:"neuro", text:"Sedation was increased overnight (propofol 30→50 + midazolam bolus), which confounds today's neuro exam", why:"An absent motor exam on deep sedation means nothing. Presenting the exam without stating the sedation context invites wrong conclusions on rounds."},
+  {sys:"neuro", text:"Neuroprognostication is premature: under 72 hours, sedated, early post-arrest", why:"Families and even consultants ask early. Knowing the exam findings that do carry weight now (reactive pupils, corneals present) versus what must wait is core post-arrest care."},
+  {sys:"cv", text:"Norepinephrine weaned off at 23:00; MAPs 72-80 unsupported since", why:"Off pressors with an EF of 30% is the key hemodynamic headline and frees the day's agenda for neuro and rhythm issues."},
+  {sys:"cv", text:"QTc 496 this morning (up from 452) while on an amiodarone infusion", why:"Amiodarone, hypokalemia, and hypomagnesemia all stack on the QTc in a post-VF patient. This drives the electrolyte goals and the 'how long does amio continue' question for cardiology."},
+  {sys:"renal", text:"K repleted 3.1 → 3.9; Mg 1.7: post-arrest goals are K > 4.0 and Mg > 2.0, so both need action", why:"Electrolyte targets are tighter after VF arrest. 3.9 is 'normal' on the lab slip but below goal for this patient."},
+  {sys:"cv", text:"Troponin peaked (15,600 → 12,900) and echo shows EF 30% with anterior hypokinesis", why:"Confirms the infarct is completing its course; the EF matters for pressor thresholds, fluid strategy, and eventual ICD discussions."},
+  {sys:"cv", text:"DAPT (aspirin + ticagrelor) confirmed given via OG this morning after drug-eluting stent", why:"Missed DAPT after a fresh DES risks stent thrombosis, a never-miss item. Intubation is not a reason to skip it; it goes down the OG tube."},
+  {sys:"resp", text:"Lung-protective settings (6 mL/kg), good gas, FiO2 40%, no vent changes needed", why:"A stable vent is still worth 15 seconds of your presentation: settings, gas, and that nothing changed overnight."},
+  {sys:"msk", text:"Femoral access site checks documented benign: no hematoma, pulses intact", why:"Post-cath patients bleed at the groin. Verifying the site checks is a habit worth building on day one."}
+],
+debrief:{
+  pitfalls:[
+    "The stat EEG ordered at 04:30 that still isn't connected at 06:30 is the planted follow-up gap. 'Ordered' is not 'done'; pre-rounding means checking execution, not just orders.",
+    "The 06:00 neuro exam looks ominous (no eye opening, no commands) but was performed at RASS -4 on freshly increased sedation. Interns who quote it without the sedation context set up a misleading rounds discussion.",
+    "Temp 37.8 and climbing after the pads came off is easy to dismiss as 'low-grade.' In a post-arrest brain it is an emergency in slow motion, and 'cooling protocol complete' at 20 hours reflects a real confusion between older short-duration TTM protocols and current 72-hour fever prevention.",
+    "K of 3.9 reads as normal. The trap is not knowing the disease-specific goal (K > 4.0, Mg > 2.0 post-VF)."
+  ],
+  pearls:[
+    "After cardiac arrest, the brain is the patient: active fever prevention for 72 hours post-ROSC, seizure detection, and sedation-aware exams dominate day 2.",
+    "Never present a neuro exam without stating the sedation it was performed under.",
+    "Check that stat orders actually happened. The order queue is where overnight plans go to die.",
+    "DAPT after a drug-eluting stent is a never-miss med; confirm administration, not just the order."
+  ],
+  discussion:[
+    "The EEG tech is still not there. What exactly do you do at 06:45: who do you call, and what do you say?",
+    "The family asks at 08:00: 'Is he going to wake up?' How do you answer on post-arrest day 2?",
+    "Would you treat the myoclonus empirically as seizure before the EEG is on? What are the tradeoffs?"
+  ],
+  model:"Mr. Webb is our 54-year-old with a VF arrest and about 18 minutes of downtime, now status post drug-eluting stent to the proximal LAD, intubated, ICU day 2 on active fever prevention. Hemodynamically he is the good news: off norepi since 23:00 with MAPs in the 70s despite an EF of 30%.\n\nThe issue overnight is neuro. At 04:30 he had two minutes of bilateral myoclonic jerking, which could be post-anoxic myoclonus or seizure. Neurology was paged, a stat EEG was ordered, and as of 06:30 it is still not connected. I have paged the tech again and that is my top follow-up. He got midazolam and his propofol went from 30 to 50, so this morning's exam (no eye opening, withdrawing, not following commands) was done at RASS -4 and I would interpret it cautiously. Pupils and corneals are intact. It's too early for any prognostication.\n\nThe second problem is temperature. The night staff took the cooling pads off at 05:00 as 'protocol complete,' but we are only about 20 hours post-ROSC and fever prevention should continue for 72 hours. He is already 37.8 and climbing, so I want the device back on with a normothermia target. QTc is up to 496 on the amiodarone drip; potassium was repleted to 3.9 and mag is 1.7, both below post-arrest goals, so I'll replete to K over 4 and mag over 2 and ask cardiology how long they want the amio. Troponin has peaked. DAPT went in through the OG on time. Vent is lung-protective at 40% with a good gas; groin site is clean.\n\nPlan by system:\nNeuro: chase the EEG hookup now, restart active temperature control for the remainder of the 72-hour window, keep sedation at the ordered RASS target and state the sedation context with every exam, and defer any neuroprognostication until at least 72 hours off sedation.\nCV: follow the QTc on the amiodarone drip and clarify its duration with cardiology, continue DAPT and the high-intensity statin, and respect the EF of 30 with fluids.\nResp: continue lung-protective settings at 40%; SAT/SBT once the seizure question and temperature control are sorted.\nRenal: replete to post-arrest goals, potassium over 4.0 and magnesium over 2.0.\nGI: advance the trophic tube feeds per nutrition.\nHeme: continue heparin prophylaxis; no therapeutic anticoagulation post-PCI.\nEndo: sliding scale insulin, glucose trending down.\nMSK: continue the q4h femoral site checks.\n\nICU Liberation checklist: pain covered with the fentanyl drip. SAT/SBT on hold until the seizure question is answered and temperature control is back on. Sedation was deepened overnight for the myoclonus; back to the RASS -2 target once the EEG is running. CAM-ICU not assessable this deep. No mobility yet. The family will want an update this morning, and I'll have that conversation without prognosticating. DVT prophylaxis on with heparin SQ. No stress ulcer prophylaxis is ordered; I'd add it given mechanical ventilation and DAPT. Lines: art line, central line, Foley, OG, and ETT are all day 2 and still needed."
+}
+},
+
+/* ------------------------------------------------------------------ */
+/* CASE 3: INTUBATED COPD                                            */
+/* ------------------------------------------------------------------ */
+{
+id:"copd",
+listName:"Ortiz, Raymond", bed:"MICU 7", ageSex:"61 M", mrn:"400-18-204",
+codeStatus:"Full code", allergies:"Sulfa (hives)", icuDay:3, admitted:"3 days ago from ED",
+dxTeaser:"Hypercapnic respiratory failure from COPD exacerbation, intubated",
+tabs:{
+overview:{
+  oneLiner:"61-year-old man with severe COPD (on home tiotropium, 2L home O2 at night) admitted 3 days ago with a COPD exacerbation and hypercapnic respiratory failure, intubated in the ED after failing BiPAP, now ICU day 3 and improving.",
+  hpi:"One week of increased dyspnea, sputum purulence, and wheezing after an upper respiratory infection. In the ED: severe respiratory distress, ABG 7.18/88/60 on BiPAP, progressive somnolence; intubated first-pass. Started on steroids, bronchodilators, azithromycin.",
+  pmh:["COPD, GOLD D (FEV1 32% predicted on PFTs last year)","2 prior exacerbations requiring admission, never previously intubated","Hypertension","Current smoker, 40 pack-years"],
+  course:"ICU day 1-2: ventilated with a strategy allowing permissive hypercapnia, bronchodilators, methylprednisolone, azithromycin. Auto-PEEP measured 10 on day 1, improved to 5 yesterday with prolonged expiratory time. Gases steadily improving. Overnight events per flowsheet."
+},
+events:[
+  {t:"21:00", x:"Agitated, coughing against the ventilator, reaching for ETT. Propofol increased 25 → 40 mcg/kg/min. Settled."},
+  {t:"23:00", x:"Scheduled albuterol/ipratropium given by RT."},
+  {t:"03:00", x:"High peak-pressure alarms. Peak pressure 42, plateau checked at 19. Suctioned moderate amount of thick tan secretions x2. Peak pressures improved to 30 after suctioning. RT at bedside."},
+  {t:"04:00", x:"ABG on unchanged settings: 7.31 / 58 / 74 (prior yesterday 16:00: 7.24 / 70 / 68)."},
+  {t:"05:00", x:"Tmax 37.9 °C. Secretions noted to be thicker and more tan than prior. Sputum culture sent."},
+  {t:"05:30", x:"RT note: SAT/SBT not attempted this morning: patient on increased propofol since 21:00; RASS -3. Deferred to day team."},
+  {t:"06:00", x:"Resting comfortably, synchronous with ventilator. K on AM labs 3.3; no repletion ordered yet."}
+],
+vitals:{
+  cols:["Time","T °C","HR","BP (MAP)","RR set/total","SpO2","Notes"],
+  rows:[
+    ["20:00","37.2","92","138/78 (98)","14 / 18","95%",""],
+    ["00:00","37.4","96","132/74 (93)","14 / 17","94%",""],
+    ["03:00","37.6","104","142/80 (100)","14 / 22","91%","Peak pressure alarms; suctioned"],
+    ["04:00","37.7","94","130/72 (91)","14 / 18","95%",""],
+    ["06:00",{v:"37.9",f:"H"},"90","128/70 (89)","14 / 16","95%",""]
+  ]
+},
+resp:{
+  kv:[
+    ["Mode","Volume assist-control"],
+    ["Tidal volume","450 mL (7 mL/kg predicted body weight)"],
+    ["Set rate / total rate","14 / 16"],
+    ["PEEP / FiO2","5 / 40%"],
+    ["Peak / plateau (06:00)","28 / 19 cm H2O (peak 42 → 30 after suctioning at 03:00)"],
+    ["Auto-PEEP","5 cm H2O (down from 10 on day 1)"],
+    ["I:E ratio","1:4 (prolonged expiratory time)"],
+    ["ABG 04:00","7.31 / 58 / 74, improved from 7.24 / 70 / 68 yesterday"],
+    ["ETT","8.0, 24 cm at the lip"]
+  ],
+  note:"RT: secretions thick and tan overnight, moderate volume with suctioning. Recommend day team evaluate for SAT/SBT; deferred overnight due to sedation increase. Baseline (admission) ABG for reference: 7.18 / 88 / 60."
+},
+labs:{
+  cols:["Test","Yesterday 05:00","Today 05:00"],
+  rows:[
+    ["WBC (K/µL)",{v:"11.8",f:"H"},{v:"13.5",f:"H"}],
+    ["Hgb (g/dL)","14.1","13.8"],
+    ["Platelets (K/µL)","198","205"],
+    ["Na (mmol/L)","138","139"],
+    ["K (mmol/L)","3.7",{v:"3.3",f:"L"}],
+    ["HCO3 (mmol/L)",{v:"30",f:"H"},{v:"29",f:"H"}],
+    ["Creatinine (mg/dL)","0.9","0.9"],
+    ["Glucose (mg/dL)",{v:"196",f:"H"},{v:"188",f:"H"}],
+    ["Magnesium (mg/dL)","2.0","1.9"],
+    ["Phosphorus (mg/dL)","3.1","2.9"]
+  ],
+  note:"Glucose elevation in the setting of methylprednisolone; on sliding scale coverage."
+},
+meds:{
+  drips:[
+    {n:"Propofol", d:"40 mcg/kg/min (increased from 25 at 21:00 for agitation)", note:"RASS currently -3; target ordered -1 to 0"},
+    {n:"Fentanyl", d:"50 mcg/hr", note:""}
+  ],
+  sched:[
+    {n:"Methylprednisolone", d:"40 mg IV q12h", note:"Day 3"},
+    {n:"Azithromycin", d:"500 mg IV daily", note:"Day 3 of 5"},
+    {n:"Albuterol/ipratropium", d:"Nebulized q4h via vent circuit", note:"RT administering"},
+    {n:"Enoxaparin", d:"40 mg SQ daily", note:"VTE prophylaxis"},
+    {n:"Pantoprazole", d:"40 mg IV daily", note:"Stress ulcer prophylaxis"},
+    {n:"Insulin regular sliding scale", d:"q6h", note:"Steroid hyperglycemia"},
+    {n:"Chlorhexidine oral care", d:"q12h", note:"Vent bundle"}
+  ],
+  held:[
+    {n:"Tiotropium (home)", d:"HELD", note:"Replaced by nebulized ipratropium while ventilated"}
+  ]
+},
+io:{
+  kv:[
+    ["In (last 24 h)","2,100 mL (meds, tube feeds at goal 40 mL/hr)"],
+    ["Out (last 24 h)","1,700 mL (urine)"],
+    ["Net (24 h)","+400 mL"],
+    ["Cumulative since admission","+1,900 mL"],
+    ["Bowel movement","Yesterday evening"]
+  ],
+  lines:[
+    "Right radial arterial line, day 3",
+    "Left forearm PIV x2, day 3 (no central line)",
+    "Foley catheter, day 3",
+    "OG tube, position confirmed, feeds at goal",
+    "ETT 8.0, day 3"
+  ]
+},
+micro:[
+  {t:"Sputum culture (admission)", x:"FINAL: oropharyngeal flora."},
+  {t:"Sputum culture (overnight, 05:00)", x:"Pending. Gram stain: moderate WBC, mixed organisms."},
+  {t:"Blood cultures (admission)", x:"FINAL: no growth x2 days."},
+  {t:"Respiratory viral panel", x:"Rhinovirus/enterovirus POSITIVE. Influenza and COVID negative."},
+  {t:"CXR (this AM 05:45)", x:"Hyperinflation with flattened diaphragms. No new focal consolidation. ETT 4 cm above carina. OG tube in stomach. Unchanged from yesterday."}
+],
+notes:[
+  {title:"Pulmonary/ICU progress note (excerpt)", who:"ICU attending", when:"Yesterday 10:00",
+   body:"A/P: COPD exacerbation with hypercapnic respiratory failure, improving.\n#Vent: permissive hypercapnia, prolonged E-time, auto-PEEP improving. Anticipate SBT screening tomorrow if gases continue to improve and sedation allows.\n#COPD: steroids day 2, azithro, scheduled bronchodilators.\n#Nutrition: tube feeds to goal.\nGoal: light sedation (RASS -1 to 0) to facilitate liberation."},
+  {title:"Cross-cover event note", who:"Night float resident", when:"03:30 today",
+   body:"Called for high peak-pressure alarms. Peak 42 but plateau 19, consistent with a resistance problem, not compliance. Suctioned thick tan plugs x2 with improvement in peaks to 30. Breath sounds with scattered wheeze, no acute distress after suctioning. If recurrent, consider bronchodilator timing and secretion management; no CXR obtained overnight as exam and sats recovered fully."}
+],
+},
+checklist:[
+  {sys:"resp", text:"Peak-pressure alarm at 03:00: peak 42 with plateau 19, a resistance problem (mucus plugging), fixed with suctioning", why:"Peak-versus-plateau is the classic vent-alarm discrimination: high peak with normal plateau = airway resistance (plug, bronchospasm, kinked tube); high both = compliance (pneumothorax, edema, ARDS). Being able to say 'plateau was 19, so it was resistance' is the skill."},
+  {sys:"neuro", text:"Propofol was increased 25 → 40 overnight for agitation and is now the main barrier to liberation: RASS -3 against an ordered target of -1 to 0", why:"Overnight sedation creep is one of the most common reasons ventilated patients stay ventilated an extra day. The pre-rounder connects last night's titration to this morning's missed SBT."},
+  {sys:"lib", text:"SAT/SBT explicitly deferred by RT this morning because of sedation; it needs to be actively restarted by the day team", why:"'Deferred to day team' means it's your job now. Advocating for a sedation interruption and SBT screen on rounds is the highest-yield action in this chart."},
+  {sys:"resp", text:"ABG trajectory improving: 7.18/88 on admission → 7.24/70 → 7.31/58", why:"Three points make a trend toward extubation. Presenting the arc, not just this morning's gas, is what makes the SBT argument persuasive."},
+  {sys:"resp", text:"Auto-PEEP improved from 10 to 5 with prolonged expiratory time", why:"Shows the obstructive physiology is being managed and improving, relevant context for liberation readiness."},
+  {sys:"renal", text:"K 3.3 with no repletion ordered; needs action (continuous beta-agonists drive potassium down)", why:"Scheduled albuterol keeps pushing K intracellularly. An unrepleted 3.3 flagged on AM labs with no order behind it is an inherited to-do."},
+  {sys:"id", text:"Early VAP surveillance: thickening tan secretions + Tmax 37.9 + WBC 11.8 → 13.5, new sputum culture pending, CXR without new infiltrate", why:"Day 3 on the vent with changing secretions is exactly when VAP starts. Nothing is diagnostic yet; the skill is naming the constellation and the pending data rather than either ignoring it or overcalling it."},
+  {sys:"id", text:"Methylprednisolone day 3 and azithromycin day 3 of 5: antibiotic/steroid day tracking with a taper/transition discussion due", why:"Every ICU presentation should state therapy day numbers; day 3 steroids invites the IV-to-PO and duration conversation."},
+  {sys:"endo", text:"Steroid hyperglycemia (180s-190s) on sliding scale only", why:"Predictable steroid effect; worth one line and possibly basal coverage if persistent."},
+  {sys:"lib", text:"ETT position confirmed on CXR; no central line (peripheral access only); net +400 mL, roughly even", why:"A quick lines-tubes-position check every morning catches migration and unnecessary hardware. Knowing he has no central line matters if he deteriorates."}
+],
+debrief:{
+  pitfalls:[
+    "The peak/plateau numbers are planted for the discrimination teaching point. Many interns report 'high pressures overnight' without the plateau, which is the entire answer.",
+    "The sedation increase at 21:00 quietly cancels the morning SBT. The causal chain (agitation → propofol up → RASS -3 → SBT deferred) is spread across three different chart locations; assembling it is the exercise.",
+    "K 3.3 with no repletion order is a planted unowned task, easy to miss because the number isn't 'critical.'",
+    "The secretion change + low-grade temp + WBC bump is deliberately ambiguous; the goal is calibrated concern (send culture, watch, don't start antibiotics reflexively), not a VAP diagnosis."
+  ],
+  pearls:[
+    "High peak + normal plateau = resistance. High peak + high plateau = compliance. Say the plateau out loud on rounds.",
+    "Every morning on a vented patient: has sedation crept up overnight, and does anything block today's SAT/SBT? Liberation is lost one 'reasonable' titration at a time.",
+    "Present gas trajectories, not single gases.",
+    "Track therapy days (steroid day X, antibiotic day Y of Z) as a reflex."
+  ],
+  discussion:[
+    "Walk through the peak/plateau logic: what would you have worried about if the plateau had been 35?",
+    "The nurse says he 'gets wild' when propofol is turned down. How do you still get to an SAT/SBT today?",
+    "Would you start empiric VAP coverage this morning? What would change your mind by this afternoon?"
+  ],
+  model:"Mr. Ortiz is our 61-year-old with GOLD D COPD, intubated three days ago for hypercapnic respiratory failure, and the story today is that he's ready to move toward liberation but sedation is in the way.\n\nOvernight there were two things. At 03:00 he had peak-pressure alarms (peak of 42 but plateau of 19, so a resistance problem), and suctioning brought up thick tan plugs with peaks back down to 30. And at 21:00 he was agitated, so propofol went from 25 to 40; he's RASS -3 now against a target of -1 to 0, and because of that RT deferred the SAT/SBT this morning.\n\nHis gases tell the real story: 7.18 and 88 on admission, 7.24/70 yesterday, 7.31/58 this morning. Auto-PEEP is down from 10 to 5. Vent is otherwise 450 by 14, PEEP 5, 40%. Secretions have turned thicker and tan with a Tmax of 37.9 and WBC up from 11.8 to 13.5; CXR shows no new infiltrate, sputum culture is pending, so I'd call it VAP surveillance, not VAP. Potassium is 3.3 with nebs running around the clock and no repletion ordered; I'll fix that this morning. Steroids are day 3, azithro day 3 of 5, viral panel was rhinovirus positive.\n\nMy plan by system:\nNeuro: SAT this morning with a nurse-present propofol interruption, then back to the ordered RASS target of -1 to 0; CAM-ICU once he lightens.\nCV: hemodynamically stable, no active issues.\nResp: SBT screen if he tolerates the SAT, keep the prolonged expiratory time while auto-PEEP resolves, continue scheduled bronchodilators and secretion clearance, and discuss transitioning steroids toward PO with total duration.\nRenal: replete the potassium of 3.3 this morning and recheck; the scheduled nebs will keep pushing it down.\nGI: tube feeds at goal, continue the bowel regimen.\nHeme: continue enoxaparin prophylaxis.\nID: follow the pending sputum culture and the afternoon temp curve, azithromycin day 3 of 5; VAP surveillance for now, not empiric treatment.\nEndo: steroid hyperglycemia on sliding scale; consider basal insulin if it persists.\n\nICU Liberation checklist: pain controlled on fentanyl. SAT and SBT are today's main event. Sedation is above goal at RASS -3, which the SAT addresses. CAM-ICU once he lightens. Mobility: PT and up in the chair after the SBT if he does well. Family updated on the liberation plan. DVT prophylaxis on with enoxaparin. Stress ulcer prophylaxis on with pantoprazole while ventilated. Lines: arterial line, Foley, OG, and ETT still needed today; reassess the Foley and art line if he extubates."
+}
+},
+
+/* ------------------------------------------------------------------ */
+/* CASE 4: CIRRHOTIC UGIB                                            */
+/* ------------------------------------------------------------------ */
+{
+id:"gib",
+listName:"Herrera, Luis", bed:"MICU 9", ageSex:"49 M", mrn:"400-45-317",
+codeStatus:"Full code", allergies:"NKDA", icuDay:1, admitted:"Yesterday 18:00 from ED",
+dxTeaser:"Upper GI bleed with known alcohol-related cirrhosis",
+tabs:{
+overview:{
+  oneLiner:"49-year-old man with alcohol-related cirrhosis (known varices on EGD 2 years ago, not banded since) admitted last evening with hematemesis and melena, hemodynamically maintained, awaiting EGD this morning.",
+  hpi:"Two episodes of hematemesis yesterday afternoon followed by black tarry stools. Last alcohol use: reports 'a few beers' two days ago; drinks 6-8 daily at baseline. In the ED: HR 112, BP 98/60, Hgb 7.8. Two large-bore PIVs placed, type and screen sent with 2 units crossmatched. Started on octreotide infusion, pantoprazole 80 mg IV bolus (then 40 mg IV BID), and ceftriaxone. GI consulted from the ED.",
+  pmh:["Alcohol-related cirrhosis (EGD 2 years ago: small esophageal varices, no intervention)","Alcohol use disorder, active","Prior alcohol withdrawal without seizures","No prior variceal bleed"],
+  course:"Admitted 18:00. GI plans EGD this morning (~09:00 pending unit availability). NPO since midnight. Overnight events per flowsheet."
+},
+events:[
+  {t:"19:00", x:"Arrived from ED. 2 large-bore (18g) PIVs confirmed patent. Type and crossmatch active; 2 units PRBC available in blood bank."},
+  {t:"21:00", x:"CIWA score 4; no treatment triggered. Thiamine and folate given."},
+  {t:"23:30", x:"Moderate melanotic stool. Transient HR to 110, BP maintained 100-110 systolic. Cross-cover aware."},
+  {t:"04:00", x:"AM labs: Hgb 6.9 (from 7.8 at admission). Cross-cover notified; 1 unit PRBC transfused per restrictive threshold. Transfusion completed 05:15 without reaction."},
+  {t:"05:30", x:"Post-transfusion Hgb 7.9."},
+  {t:"05:45", x:"Noted to be mildly confused: oriented to person and place, not date. Asterixis present. Lactulose 30 mL first dose given per new order. CIWA score 6 (anxiety, mild tremor), below treatment threshold."},
+  {t:"06:15", x:"GI fellow called unit: EGD targeted for ~09:00. Consent NOT yet obtained: patient was confused; fellow requests day team assess capacity / contact family. Keep NPO."}
+],
+vitals:{
+  cols:["Time","T °C","HR","BP (MAP)","RR","SpO2","Notes"],
+  rows:[
+    ["20:00","36.9","98","108/64 (79)","16","97%",""],
+    ["23:30","37.0",{v:"110",f:"H"},"102/60 (74)","18","97%","With melanotic stool"],
+    ["02:00","36.8","104","104/62 (76)","16","98%",""],
+    ["04:30","36.9","106","100/58 (72)","16","97%","During transfusion"],
+    ["06:00","37.0","95","110/64 (79)","16","98%",""]
+  ]
+},
+resp:{
+  kv:[
+    ["Current support","Room air, SpO2 97-98%"],
+    ["Work of breathing","Normal"],
+    ["Airway note","Mental status mildly altered, relevant to airway protection if bleeding recurs or encephalopathy worsens; suction at bedside"]
+  ],
+  note:"No respiratory events overnight."
+},
+labs:{
+  cols:["Test","ED 16:30","Today 04:00","Post-transfusion 05:30"],
+  rows:[
+    ["Hgb (g/dL)",{v:"7.8",f:"L"},{v:"6.9",f:"C"},{v:"7.9",f:"L"}],
+    ["Platelets (K/µL)",{v:"88",f:"L"},{v:"84",f:"L"},"--"],
+    ["INR",{v:"1.8",f:"H"},{v:"1.8",f:"H"},"--"],
+    ["Na (mmol/L)",{v:"131",f:"L"},{v:"130",f:"L"},"--"],
+    ["K (mmol/L)","3.6","3.7","--"],
+    ["Creatinine (mg/dL)","1.0","1.0","--"],
+    ["Total bilirubin (mg/dL)",{v:"3.2",f:"H"},"--","--"],
+    ["AST / ALT (U/L)",{v:"96 / 44",f:"H"},"--","--"],
+    ["Albumin (g/dL)",{v:"2.6",f:"L"},"--","--"],
+    ["Ammonia (µmol/L)","--",{v:"88",f:"H"},"--"],
+    ["Lactate (mmol/L)",{v:"2.4",f:"H"},"1.5","--"],
+    ["BUN (mg/dL)",{v:"34",f:"H"},{v:"36",f:"H"},"--"]
+  ],
+  note:"BUN elevation out of proportion to creatinine, consistent with blood in the GI tract. Ethanol level (ED): undetectable."
+},
+meds:{
+  drips:[
+    {n:"Octreotide", d:"50 mcg/hr continuous (after 50 mcg bolus in ED)", note:"Variceal bleeding protocol"}
+  ],
+  sched:[
+    {n:"Pantoprazole", d:"40 mg IV q12h", note:"After 80 mg IV bolus in the ED"},
+    {n:"Ceftriaxone", d:"1 g IV daily", note:"Day 1. Infection prophylaxis in cirrhosis with GI bleed"},
+    {n:"Lactulose", d:"30 mL per NG/PO q6h, titrate to 3 soft stools/day", note:"NEW order 05:45; first dose given"},
+    {n:"Thiamine", d:"100 mg IV daily", note:"Given 21:00"},
+    {n:"Folate", d:"1 mg IV daily", note:"Given 21:00"},
+    {n:"CIWA-Ar protocol", d:"Lorazepam PRN per score ≥ 8", note:"Scores 4 → 6, no doses triggered yet"}
+  ],
+  held:[
+    {n:"Propranolol 40 mg BID (home)", d:"HELD", note:"Active bleeding: nonselective beta-blocker held; also blunts tachycardic response"},
+    {n:"Spironolactone 100 mg daily (home)", d:"HELD", note:"Active bleed / volume"}
+  ]
+},
+io:{
+  kv:[
+    ["In (since admission)","2,400 mL (crystalloid 1,500, PRBC 350, meds)"],
+    ["Out (since admission)","1,150 mL urine; melanotic stool x2 (not quantified)"],
+    ["Net","+1,250 mL"],
+    ["Urine output","40-60 mL/hr, stable"],
+    ["Diet","NPO since midnight for EGD"]
+  ],
+  lines:[
+    "Peripheral IV 18g x2, left and right antecubital, day 1, both patent",
+    "No central line, no arterial line",
+    "Type and crossmatch ACTIVE: 2 units PRBC in blood bank (1 of original 2 used; re-crossmatch ordered)"
+  ]
+},
+micro:[
+  {t:"Blood cultures", x:"Not sent (afebrile)."},
+  {t:"RUQ ultrasound with Doppler (ED)", x:"Cirrhotic liver morphology. Splenomegaly. Small ascites, not amenable to safe bedside tap. Portal vein patent with hepatopetal flow."},
+  {t:"CXR (ED)", x:"No acute cardiopulmonary process. No free air under the diaphragm."},
+  {t:"Diagnostic paracentesis", x:"Not performed; ascites too small per ultrasound."}
+],
+notes:[
+  {title:"ED course (excerpt)", who:"EM attending", when:"Yesterday 17:45",
+   body:"Hematemesis x2 at home, melena on exam. Initial HR 112, BP 98/60, improved with 1L LR. Hgb 7.8, INR 1.8, platelets 88. Two 18g PIVs, T&C 2 units. Octreotide bolus and infusion started, pantoprazole 80 mg IV bolus given, ceftriaxone given. GI consulted, accepts to MICU."},
+  {title:"GI consult note (excerpt)", who:"GI fellow", when:"Yesterday 20:30",
+   body:"49M with alcohol-related cirrhosis and known small varices, presenting with hematemesis and melena. Ddx: variceal hemorrhage vs portal hypertensive gastropathy vs peptic ulcer. Agree with octreotide infusion and pantoprazole 40 mg IV BID after the 80 mg bolus, ceftriaxone, restrictive transfusion strategy (threshold Hgb 7), NPO after midnight. Plan EGD in AM. Please obtain consent when patient able or via surrogate. Avoid over-transfusion; raising portal pressure can worsen variceal bleeding."},
+  {title:"Cross-cover event note", who:"Night resident", when:"04:30 today",
+   body:"Called for Hgb 6.9 on AM labs after melanotic stool at 23:30. Hemodynamically maintained, transient tachycardia only. Transfused 1 unit PRBC per restrictive threshold (goal Hgb ≥ 7, avoiding over-transfusion per GI). Post-transfusion Hgb pending at time of note. Also noted new mild confusion with asterixis; started lactulose, considering hepatic encephalopathy precipitated by GI bleed; CIWA scores below treatment threshold but continue to monitor for withdrawal, last drink ~2 days ago."}
+],
+},
+checklist:[
+  {sys:"heme", text:"Melena at 23:30, then Hgb 7.8 → 6.9 → transfused 1 unit → post-transfusion 7.9", why:"The full loop (trigger, threshold, intervention, response) is the core narrative of this pre-round. Rounds will ask 'what's the post-transfusion hemoglobin?' and you need the number."},
+  {sys:"gi", text:"EGD targeted ~09:00, patient NPO, but consent is NOT obtained, and the GI fellow explicitly handed that task to the day team", why:"The scope happens in two hours and the rate-limiting step is an administrative one sitting in your lap. Capacity assessment vs. surrogate consent must start now, not on rounds."},
+  {sys:"neuro", text:"New confusion with asterixis at 05:45: hepatic encephalopathy (likely precipitated by the bleed), lactulose started; withdrawal is the competing diagnosis with CIWA 4 → 6 and last drink ~2 days ago", why:"Two overlapping causes of altered mental status with opposite treatments (lactulose vs. benzodiazepines, and benzos worsen HE). Naming both and how you'll tell them apart is the sophisticated move."},
+  {sys:"resp", text:"Mental status change also matters for the airway: aspiration risk during EGD and if he rebleeds", why:"An encephalopathic cirrhotic with an upper GI bleed heading to endoscopy is a recognized intubation-for-airway-protection discussion. Anticipating it beats reacting to it."},
+  {sys:"cv", text:"Transient tachycardia to 110 with the melanotic stool, otherwise maintained without pressors, but home propranolol is held and would blunt tachycardia anyway", why:"Knowing his beta-blocker is held (and that when on it, heart rate underestimates bleeding) calibrates how much reassurance vital signs actually provide."},
+  {sys:"heme", text:"Restrictive transfusion strategy (threshold 7) deliberately chosen: over-transfusion raises portal pressure and worsens variceal bleeding", why:"This is why we didn't 'top him up.' Being able to state the rationale, not just the number, is the difference between reporting and understanding."},
+  {sys:"heme", text:"INR 1.8 and platelets 84-88: coagulopathy of cirrhosis, not routinely 'corrected' with FFP; crossmatch kept active with units ahead", why:"INR poorly reflects bleeding risk in cirrhosis and FFP adds volume/portal pressure. The actionable items are product availability and a plan, not reflexive correction."},
+  {sys:"gi", text:"BUN 36 with normal creatinine: digested blood, supports ongoing/recent upper GI source", why:"A classic pattern worth recognizing and mentioning in one line."},
+  {sys:"gi", text:"The cirrhotic-bleed bundle is running and correct: octreotide 50 mcg/hr, pantoprazole 40 mg IV BID after the ED bolus, ceftriaxone day 1", why:"Verifying each drip and med dose, and the antibiotic (which has a mortality benefit in cirrhotic GI bleeds), is a checklist behavior; one wrong pump setting matters here."},
+  {sys:"cv", text:"Home propranolol and spironolactone held, appropriate during active bleeding", why:"Med-rec with reasoning: nonselective beta-blockade impairs the compensatory response during hemorrhage; restart is a post-hemostasis decision."},
+  {sys:"heme", text:"Access and products verified: two patent 18g PIVs, crossmatch active, 1 unit used and re-crossmatch ordered to stay 2 ahead", why:"In a bleeder, your pre-round always answers: can I transfuse in the next five minutes if he opens up? Access + active crossmatch = yes."}
+],
+debrief:{
+  pitfalls:[
+    "The unconsented 09:00 EGD is the planted logistics bomb. Interns who focus purely on the medicine miss that the single most time-critical task is consent/capacity, and it was explicitly handed to them in a 06:15 phone call buried in the events.",
+    "The confusion at 05:45 invites anchoring: encephalopathy (lactulose started) versus early withdrawal (CIWA 6, last drink 2 days ago, prior withdrawal history). The chart deliberately supports both.",
+    "Post-transfusion Hgb of 7.9 tempts 'let's give another unit to be safe.' The GI note pre-plants the counter-argument: over-transfusion raises portal pressure.",
+    "The held propranolol is a two-layer teaching point: why it's held, and why his heart rate is only partially reassuring once you remember what the drug does."
+  ],
+  pearls:[
+    "For any GI bleeder, pre-rounds must answer four questions: What's the Hgb trend and transfusion response? Can I transfuse RIGHT NOW (access + crossmatch)? When is the scope and is everything ready for it (NPO, consent, airway plan)? What's running (octreotide/PPI/ceftriaxone) and at what rate?",
+    "Restrictive transfusion (threshold 7) in stable UGIB improves outcomes, especially in cirrhotics, where over-transfusion raises portal pressure.",
+    "Altered mental status in a cirrhotic is a differential, not a diagnosis: encephalopathy, withdrawal, hypoglycemia, sepsis, and rebleeding with hypoperfusion can coexist.",
+    "Logistics are patient care: an unconsented procedure is a delayed procedure, and a delayed EGD in a variceal bleeder is a clinical outcome."
+  ],
+  discussion:[
+    "It's 07:00. Walk me through exactly how you handle consent: how do you assess capacity in a patient with asterixis, and what if he lacks it?",
+    "He becomes agitated at 08:00 with CIWA 10. Do you give lorazepam before his EGD? What are you weighing?",
+    "GI asks whether he should be intubated for the EGD. What features of this chart argue for and against?"
+  ],
+  model:"Mr. Herrera is our 49-year-old with alcohol-related cirrhosis and known small varices, admitted last evening with hematemesis and melena, ICU day 1. The two headlines are that he bled overnight with an appropriate transfusion response, and that his 09:00 EGD is not yet consented.\n\nOvernight: melena at 23:30 with transient heart rate to 110, then the 04:00 hemoglobin came back 6.9 from 7.8. He got one unit on the restrictive threshold and came up to 7.9. He's maintained his pressure throughout without pressors, though I'd note his home propranolol is held, so his heart rate response is real. BUN is 36 against a creatinine of 1.0, consistent with blood in the gut. INR is 1.8 and platelets 84, the coagulopathy of cirrhosis, which we're not reflexively correcting; crossmatch is active and I've re-ordered to keep two units ahead. Both 18-gauge lines are patent.\n\nAt 05:45 he became confused with asterixis, likely hepatic encephalopathy precipitated by the bleed (lactulose was started), but his CIWA has crept from 4 to 6 with a last drink two days ago and prior withdrawal, so withdrawal is the competing diagnosis and benzos would worsen encephalopathy, so that's a decision point I want the team's input on. The bundle is running: octreotide at 50, pantoprazole 40 IV BID after the ED bolus, ceftriaxone given.\n\nPlan by system:\nNeuro: monitor CIWA against the encephalopathy picture, titrate lactulose to three soft stools, and hold benzodiazepines unless CIWA reaches threshold; that tradeoff is a decision point I want the team's input on.\nCV: hemodynamically maintained without pressors; propranolol stays held until after hemostasis.\nResp: discuss airway protection for the EGD given his mental status; suction at the bedside and a low threshold to intubate if he rebleeds or worsens.\nRenal: creatinine stable at 1.0; follow lytes and urine output.\nGI: my first task, before rounds even finish, is EGD consent, capacity assessment first and his sister as surrogate if he lacks it; keep NPO, continue octreotide at 50, pantoprazole 40 IV BID, and recheck a hemoglobin before the scope.\nHeme: restrictive threshold of 7, keep the crossmatch active and two units ahead, and no reflexive correction of the INR or platelets.\nID: ceftriaxone day 1 continues; afebrile, no cultures needed.\nEndo: continue thiamine and folate, monitor glucose.\n\nICU Liberation checklist: no pain complaints. Not intubated, so no SAT/SBT. No sedation running, and I want to keep it that way; benzodiazepines only per CIWA protocol. Mental status is the delirium screen here and we are following it closely. Mobility: bed rest until after the EGD. Family: his sister gets a call this morning as part of the consent plan. DVT prophylaxis: pharmacologic held with active bleeding; I'll make sure compression devices are on. Stress ulcer prophylaxis covered by the pantoprazole. Lines: both 18-gauge PIVs stay, they are his transfusion access."
+}
+}
+];
+
+/* =====================================================================
+   TEMPLATE TEXT SCAN
+   One entry per checklist item (same order as the case's checklist).
+   Each entry is a list of keyword groups; an item counts as "found in
+   your notes" when EVERY group matches somewhere in the template text.
+   Groups are regex alternations and include common abbreviations.
+===================================================================== */
+const KEYWORDS = {
+  sepsis: [
+    ["fever|febrile|38\\.9|spik|tmax", "cultur|\\bcx\\b"],                              // overnight fever + cultures
+    ["urine|uop|oligur", "15|20|low|down|decreas|drop|trend"],                          // UOP down, punted
+    ["norepi|levophed|\\blevo\\b|pressor", "wean|titrat|down|\\b8\\b"],                 // pressor wean
+    ["58|transient|reposition|turn", "map|hypotens|\\bbp\\b|blood pressure"],           // transient MAP dip
+    ["aki|renal|kidney|creat|\\bcr\\b", "aki|fail|1\\.9|ris|up|doubl|injur|wors"],      // new AKI ("AKI" alone counts)
+    ["vanc", "trough|28|hold|held|supra|level|dose"],                                   // vanc trough
+    ["gnr|gram|rod|bacterem"],                                                          // GNR blood cx
+    ["lactate|lactic", "clear|1\\.4|down|improv|normal|trend"],                         // lactate cleared
+    ["magnesium|\\bmag\\b|\\bmg\\b|hypomagnes", "1\\.5|replet|low"],                    // Mg repletion
+    ["wbc|leukocyt|white count|\\b21", "cxr|chest x|imaging|wors|up|ris"],              // WBC/CXR discordance
+    ["fluid|balance|volume|\\bnet\\b", "4\\.2|6\\.8|\\+ ?4|positive|overload"],         // fluid balance
+    ["lisinopril|metformin|home med", "held|hold|stopp"]                                // home meds held
+  ],
+  arrest: [
+    ["eeg", "not (yet )?connect|still|pending|hook|tech|await|chase|follow"],           // EEG gap
+    ["cool|pad|device|temperatur|fever|normotherm|37\\.8", "off|remov|discontinu|restart|back on|ris|climb|prevent"], // device off
+    ["propofol|sedat|midazolam|rass", "exam|confound|increas|deep|50"],                 // sedation confounds exam
+    ["prognos"],                                                                        // prognostication premature
+    ["norepi|\\blevo\\b|pressor", "off|wean"],                                          // off pressors
+    ["qtc|496|\\bqt\\b", "amio"],                                                       // QTc on amiodarone
+    ["potassium|\\bk\\b|3\\.9|3\\.1", "mag|goal|4\\.0|2\\.0|replet"],                   // K/Mg goals
+    ["trop|echo|\\bef\\b|30%", "peak|down|hypokin|30"],                                 // troponin peaked / EF
+    ["dapt|ticagrelor|aspirin|\\basa\\b"],                                              // DAPT given
+    ["vent|tidal|lung.?protect|450"],                                                   // vent stable
+    ["femoral|groin|cath site|access site"]                                             // femoral site checks
+  ],
+  copd: [
+    ["peak", "plateau|19|42|resist|plug|suction"],                                      // peak vs plateau
+    ["propofol|sedat", "increas|40|\\bup\\b|creep|barrier|rass"],                       // sedation creep
+    ["sbt|\\bsat\\b|spontaneous|liberat|extubat", "defer|today|morning|restart|push|advocate|trial|not|attempt"], // SBT deferred
+    ["abg|\\bgas\\b|7\\.31|co2|pco2", "improv|better|trend|58|down"],                   // ABG trajectory
+    ["auto.?peep"],                                                                     // auto-PEEP improved
+    ["potassium|\\bk\\b|hypokal|3\\.3", "replet|3\\.3|low|albuterol|beta"],             // K 3.3
+    ["vap|secretion|sputum", "thick|tan|watch|surveil|cultur|\\bcx\\b|pend|37\\.9|wbc"], // VAP surveillance
+    ["steroid|methylpred|azithro", "day|taper|duration|transition"],                    // therapy day tracking
+    ["glucose|sugar|glycem|insulin", "steroid|sliding|18\\d|19\\d"],                    // steroid hyperglycemia
+    ["ett|central|peripheral|access|line", "confirm|no central|position|4 cm"]          // lines/ETT position
+  ],
+  gib: [
+    ["hgb|hemoglobin|6\\.9|melena", "transfus|prbc|unit|7\\.9"],                        // Hgb loop
+    ["egd|endoscop|scope", "consent|capacity|surrogate"],                               // EGD consent
+    ["encephalopath|asterixis|confus|ammonia|lactulose", "withdraw|ciwa|benzo|competing|lactulose"], // HE vs withdrawal
+    ["airway|aspirat|intubat", "protect|risk|egd|mental"],                              // airway planning
+    ["propranolol|beta.?block", "blunt|held|hold|tachy|heart rate|underestimat"],       // propranolol context
+    ["restrict|threshold|over.?transfus", "\\b7\\b|portal|transfus"],                   // restrictive strategy
+    ["inr|platelet|plt|coag", "1\\.8|8[48]|cirrho|correct|ffp|crossmatch"],             // coagulopathy
+    ["bun", "36|blood|creat|ratio|gut|digest"],                                         // BUN/Cr pattern
+    ["octreotide", "pantoprazole|ppi|ceftriaxone|protonix"],                            // bleed bundle
+    ["propranolol|spironolactone|home", "held|hold"],                                   // home meds held
+    ["18g|large.?bore|access|crossmatch|type and", "patent|active|2 unit|ahead|\\biv\\b"] // access/products
+  ]
+};
+function autoMatches(c){
+  const tpl = load(tplKey(c.id), {});
+  const rawAbc = load(abcKey(c.id), null);
+  const abcNotes = (rawAbc && !Array.isArray(rawAbc) && rawAbc.n) ? rawAbc.n.join(" ") : "";
+  const text = TPL_FIELDS.map(f=>tpl[f.id]||"").join(" ") + " " + abcNotes;
+  if(!text.trim()) return c.checklist.map(()=>false);
+  const kws = KEYWORDS[c.id] || [];
+  return c.checklist.map((_,i)=>{
+    const groups = kws[i];
+    if(!groups) return false;
+    return groups.every(g=>{ try{ return new RegExp(g,"i").test(text); }catch(e){ return false; } });
+  });
+}
+
+/* =====================================================================
+   APP STATE + HELPERS
+===================================================================== */
+let currentCase = null;
+let currentTab = "overview";
+let facDebrief = false;
+function goPatientList(){ if(facDebrief){ renderFacilitatorList(); } else { goHome(); } }
+let timerInt = null, timerStart = null;
+const $ = id => document.getElementById(id);
+const app = () => $("app");
+function esc(s){ return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function cell(c){
+  if(c && typeof c === "object"){ return `<span class="flag-${c.f}">${esc(c.v)}${c.f==="C"?" !!":c.f==="H"?" (H)":c.f==="L"?" (L)":""}</span>`; }
+  return esc(c);
+}
+function store(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function load(k,fb){ try{ const r = localStorage.getItem(k); return r===null?fb:JSON.parse(r); }catch(e){ return fb; } }
+function caseById(id){ return CASES.find(c=>c.id===id); }
+function tplKey(c){ return "prs_tpl_"+c; }
+function chkKey(c){ return "prs_chk_"+c; }
+function doneKey(c){ return "prs_done_"+c; }
+function abcKey(c){ return "prs_abc_"+c; }
+
+/* =====================================================================
+   5-STEP GUIDE (adapted from @defineshock) + ABCDEF DAILY CHECKLIST
+===================================================================== */
+const ABC_ITEMS = [
+  "Pain assessed? (CPOT/NRS)",
+  "SAT + SBT today, or what's blocking them?",
+  "Sedation at goal RASS?",
+  "Delirium screened? (CAM-ICU)",
+  "Early mobility plan?",
+  "Family updated?",
+  "DVT prophylaxis on?",
+  "Stress ulcer prophylaxis needed?",
+  "Lines/tubes/drains still needed? Can anything come out?"
+];
+function guideHTML(){ return `
+  <div class="gstep"><div class="gh">Step 1: TRIAGE your list <span class="gsub">(2 min)</span></div><div class="gb">
+    Before you touch a chart, scan the list. Ask the overnight team:
+    <ul><li>Who got worse?</li><li>Who's new?</li><li>Any codes, RRTs, or procedures overnight?</li></ul>
+    <div class="gquote">🚨 Start with the sickest. Not room 1.</div></div></div>
+  <div class="gstep"><div class="gh">Step 2: the CHART CHECK <span class="gsub">(&lt;5 min per patient; set a timer if you have to)</span></div><div class="gb">
+    For each patient, check these in order:
+    <ul><li><b>Overnight events</b>: nursing notes, pages, new orders</li>
+    <li><b>Vitals trends</b>: not just the last set; look at the trajectory</li>
+    <li><b>Vent settings</b>: mode, rate, FiO2, PEEP (write them down)</li>
+    <li><b>I&amp;Os</b>: net fluid balance over 24 h, urine output per hour</li>
+    <li><b>Labs</b>: AM labs, cultures, pending results</li>
+    <li><b>Drips</b>: pressor doses, sedation, insulin drip rate</li></ul></div></div>
+  <div class="gstep"><div class="gh">Step 3: the BEDSIDE look 👀</div><div class="gb">
+    You HAVE to see the patient. Go to the bedside and look at:
+    <ul><li><b>The patient</b>: color, breathing, cap refill, exam, awake vs. sedated?</li>
+    <li><b>The monitor</b>: rhythm, SpO2, art-line waveform</li>
+    <li><b>The pumps</b>: what's running and at what rate?</li>
+    <li><b>The drains</b>: chest tube output, urine, NG</li></ul>
+    <div class="gquote">The chart lies sometimes. The patient never does.</div>
+    <div class="small muted">(In this simulator the chart is all you have; in real life this step is not optional.)</div></div></div>
+  <div class="gstep"><div class="gh">Step 4: build your plan by SYSTEM</div><div class="gb">
+    Organize your thoughts by organ system:
+    <ul><li><b>Neuro:</b> sedation, RASS, CAM-ICU, neuro exam, sleep aids, delirium prevention</li>
+    <li><b>CV:</b> MAP, pressors, fluid balance</li>
+    <li><b>Resp:</b> vent settings, ABG, SBT candidate, secretions, incentive spirometer</li>
+    <li><b>Renal:</b> volume status, renal function/UOP, lytes, acid-base</li>
+    <li><b>GI / Nutrition:</b> feeding, bowel function and regimen, LFTs</li>
+    <li><b>Heme/Onc:</b> Hgb, platelets, anticoagulation, DVT ppx</li>
+    <li><b>ID:</b> antibiotic day count, cultures, temp curve, WBC trend</li>
+    <li><b>Endo:</b> glucose, insulin drip, steroids</li>
+    <li><b>MSK / Skin:</b> wounds, DTIs, injuries</li></ul>
+    <div class="gquote">This becomes your presentation AND your note.</div></div></div>
+  <div class="gstep"><div class="gh">Step 5: the ICU LIBERATION CHECKLIST ✅</div><div class="gb">
+    Before you present, run through the ICU Liberation checklist:
+    <ul>${ABC_ITEMS.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+    <div class="gquote">Also known as the ABCDEF Bundle. It saves lives. Literally.</div>
+    <div class="small muted">The ICU Liberation checklist is built into the template panel for every patient in this simulator.</div></div></div>
+  <div class="gstep"><div class="gh">🎖 PRO TIPS <span class="gsub">(things your senior should tell you)</span></div><div class="gb">
+    <ul><li><b>Make it your note template.</b> Add this systems-based framework to your ICU note template in the EMR, and draft the note while you gather your pre-round information. After rounds, just update the plan. You'll finish notes much earlier.</li>
+    <li><b>Talk to the nurse.</b> All day. They know things the chart doesn't. "How was the night?" is the most underrated question in medicine.</li>
+    <li><b>Don't memorize numbers.</b> Write them down. Your brain has better things to do.</li></ul></div></div>
+  <div class="gquote" style="text-align:center;">Goal: &lt;10 min per patient. Know the story. Have a plan.</div>
+  <div class="gcredit">Framework adapted from @defineshock</div>`;
+}
+function showGuide(){
+  const m = $("guideModal");
+  m.firstElementChild.innerHTML =
+    `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+       <h2 style="margin:0;">📋 ICU pre-rounding in 5 steps</h2>
+       <button class="btn secondary" onclick="hideGuide()">Close</button>
+     </div>` + guideHTML();
+  m.style.display = "block";
+}
+function hideGuide(){ $("guideModal").style.display = "none"; }
+
+function startTimer(){
+  timerStart = Date.now();
+  $("timer").style.display = "inline-block";
+  if(timerInt) clearInterval(timerInt);
+  timerInt = setInterval(()=>{
+    const s = Math.floor((Date.now()-timerStart)/1000);
+    $("timer").textContent = String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+  }, 1000);
+}
+function stopTimer(){ if(timerInt) clearInterval(timerInt); $("timer").style.display="none"; }
+
+/* =====================================================================
+   HOME
+===================================================================== */
+function goHome(){
+  currentCase = null; stopTimer(); facDebrief = false;
+  app().innerHTML = `
+  <div class="wrap">
+    <div class="card">
+      <h2>Morning pre-rounds: MICU list</h2>
+      <p>You are the intern. Sign-out ended at 06:30 and rounds start soon. For each patient: work through the chart tabs, fill in your pre-rounding template as you go, then check your work against the gold standard. Everything in these charts is fictional.</p>
+    </div>
+    <details class="framework">
+      <summary>📋 ICU pre-rounding in 5 steps (read before your first patient)</summary>
+      <div style="margin-top:12px;">${guideHTML()}</div>
+    </details>
+    <div class="case-grid">
+      ${CASES.map(c=>{
+        const done = load(doneKey(c.id), null);
+        return `<div class="case-card">
+          <span class="bed">${esc(c.bed)} &middot; ICU day ${c.icuDay}</span>
+          <span class="nm">${esc(c.listName)} <span class="muted" style="font-weight:400">(${esc(c.ageSex)})</span></span>
+          <span class="dx">${esc(c.dxTeaser)}</span>
+          ${done!==null?`<span class="done-tag">✔ Completed: score ${done.got}/${done.total}</span>`:""}
+          <button class="btn" onclick="openCase('${c.id}')">${done!==null?"Review again":"Open chart"}</button>
+        </div>`;
+      }).join("")}
+    </div>
+    <div style="text-align:center; margin-top:22px;">
+      <button class="btn ghost" onclick="openFacilitator(this)">Facilitator debrief view</button>
+      <button class="btn ghost" onclick="resetAll(this)">Reset all my work</button>
+    </div>
+    <div class="small muted" style="text-align:center; margin:16px 0 10px 0;">Created by Henrique A. Puls, MD</div>
+  </div>`;
+  window.scrollTo(0,0);
+}
+function resetAll(btn){
+  if(btn && !btn.dataset.armed){
+    btn.dataset.armed = "1";
+    btn.textContent = "This clears all saved answers and scores. Click again to confirm.";
+    return;
+  }
+  CASES.forEach(c=>{ localStorage.removeItem(tplKey(c.id)); localStorage.removeItem(chkKey(c.id)); localStorage.removeItem(doneKey(c.id)); localStorage.removeItem(abcKey(c.id)); });
+  goHome();
+}
+
+/* =====================================================================
+   SIMULATOR (chart + template)
+===================================================================== */
+function openCase(id){
+  currentCase = caseById(id);
+  currentTab = "overview";
+  facDebrief = false;
+  startTimer();
+  renderSim();
+}
+function renderSim(){
+  const c = currentCase;
+  const saved = load(tplKey(c.id), {});
+  const rawAbc = load(abcKey(c.id), null);
+  const savedAbc = Array.isArray(rawAbc) ? {c:rawAbc, n:[]} : (rawAbc || {c:[], n:[]});
+  app().innerHTML = `
+  <div id="banner">
+    <span class="pname">${esc(c.listName)}</span>
+    <span class="bfield"><b>${esc(c.ageSex)}</b></span>
+    <span class="bfield">MRN <b>${esc(c.mrn)}</b></span>
+    <span class="bfield">Bed <b>${esc(c.bed)}</b></span>
+    <span class="bfield">ICU day <b>${c.icuDay}</b></span>
+    <span class="bfield">Admitted <b>${esc(c.admitted)}</b></span>
+    <span class="bfield"><b>${esc(c.codeStatus)}</b></span>
+    <span class="bfield allergy">Allergies: ${esc(c.allergies)}</span>
+  </div>
+  <div class="sim-cols">
+    <div id="chartpane">
+      <div class="tabs" id="tabrow"></div>
+      <div id="tabbody"></div>
+    </div>
+    <div id="tplpane">
+      <div class="tpl-head">
+        <h3>My pre-rounding template (by system)</h3>
+        <span class="small muted">Fill this in as you review the chart; it becomes your presentation AND your note. Saves automatically on this computer.</span>
+      </div>
+      <div id="tplbody">
+        ${TPL_FIELDS.map(f=>`
+          <div class="tpl-field">
+            <label for="tf_${f.id}">${esc(f.label)}</label>
+            <textarea id="tf_${f.id}" placeholder="${esc(f.ph)}" oninput="saveTpl()">${esc(saved[f.id]||"")}</textarea>
+          </div>`).join("")}
+        <div class="abc-block">
+          <h4>✅ ICU Liberation checklist</h4>
+          <div class="abc-sub">Run through this before you present. Would each item have an answer for this patient on rounds?</div>
+          ${ABC_ITEMS.map((x,i)=>`
+            <div class="abc-row">
+              <label class="abc-item"><input type="checkbox" id="abc_${i}" ${savedAbc.c[i]?"checked":""} onchange="saveAbc()"> <span>${esc(x)}</span></label>
+              <input type="text" class="abc-note" id="abcn_${i}" placeholder="Notes" value="${esc(savedAbc.n[i]||"")}" oninput="saveAbc()">
+            </div>`).join("")}
+        </div>
+      </div>
+      <div id="tplfoot">
+        <button class="btn" onclick="goScore()">I'm done: check my work</button>
+        <span id="savenote" class="muted"></span>
+      </div>
+    </div>
+  </div>`;
+  renderTabs();
+  renderTabBody();
+  window.scrollTo(0,0);
+}
+const TAB_DEFS = [
+  ["overview","Overview"],["events","Overnight Events"],["vitals","Vitals"],["resp","Resp / Vent"],
+  ["labs","Labs"],["meds","Meds / Drips"],["io","I/O & Lines"],["micro","Micro / Imaging"],["notes","Notes"]
+];
+function renderTabs(){
+  $("tabrow").innerHTML = TAB_DEFS.map(([id,label])=>
+    `<button class="tab ${currentTab===id?"active":""}" onclick="setTab('${id}')">${label}</button>`).join("");
+}
+function setTab(id){ currentTab = id; renderTabs(); renderTabBody(); $("tabbody").scrollTop = 0; }
+function tableHTML(t){
+  return `<table class="chart"><thead><tr>${t.cols.map(h=>`<th>${esc(h)}</th>`).join("")}</tr></thead>
+  <tbody>${t.rows.map(r=>`<tr>${r.map(c=>`<td>${cell(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+function kvHTML(pairs){
+  return `<dl class="kv">${pairs.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+}
+function renderTabBody(){
+  const T = currentCase.tabs; let h = "";
+  switch(currentTab){
+    case "overview":{
+      const o = T.overview;
+      h = `<h3>One-liner (per admission note)</h3><p>${esc(o.oneLiner)}</p>
+           <h3>Presentation</h3><p>${esc(o.hpi)}</p>
+           <h3>Past medical history</h3><ul class="tight">${o.pmh.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+           <h3>ICU course so far</h3><p>${esc(o.course)}</p>`;
+      break;}
+    case "events":
+      h = `<h3>Event log &amp; nursing entries (since 19:00)</h3>` +
+          T.events.map(e=>`<div class="evt"><span class="t">${esc(e.t)}</span><span class="x">${esc(e.x)}</span></div>`).join("");
+      break;
+    case "vitals":
+      h = `<h3>Vitals flowsheet (overnight)</h3>` + tableHTML(T.vitals);
+      break;
+    case "resp":
+      h = `<h3>Respiratory / ventilator</h3>` + kvHTML(T.resp.kv) +
+          (T.resp.note?`<p class="small muted"><b>RT note:</b> ${esc(T.resp.note)}</p>`:"");
+      break;
+    case "labs":
+      h = `<h3>Laboratory results</h3>` + tableHTML(T.labs) +
+          (T.labs.note?`<p class="small muted">${esc(T.labs.note)}</p>`:"");
+      break;
+    case "meds":{
+      const m = T.meds;
+      const sec = (title, arr) => arr && arr.length ? `<div class="med-sec"><h4>${title}</h4>${
+        arr.map(x=>`<div class="med"><b>${esc(x.n)}</b>: ${esc(x.d)}${x.note?`<div class="mnote">${esc(x.note)}</div>`:""}</div>`).join("")}</div>` : "";
+      h = sec("Continuous infusions", m.drips) + sec("Scheduled / PRN", m.sched) + sec("Held home medications", m.held);
+      break;}
+    case "io":
+      h = `<h3>Intake / output</h3>` + kvHTML(T.io.kv) +
+          `<h3>Lines, tubes &amp; drains</h3><ul class="tight">${T.io.lines.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`;
+      break;
+    case "micro":
+      h = `<h3>Microbiology, imaging &amp; studies</h3>` +
+          T.micro.map(x=>`<div class="note-card"><div class="nh"><b>${esc(x.t)}</b></div><div class="nb">${esc(x.x)}</div></div>`).join("");
+      break;
+    case "notes":
+      h = T.notes.map(n=>`<div class="note-card">
+            <div class="nh"><b>${esc(n.title)}</b><span>${esc(n.who)} &middot; ${esc(n.when)}</span></div>
+            <div class="nb">${esc(n.body)}</div></div>`).join("");
+      break;
+  }
+  $("tabbody").innerHTML = h;
+}
+let saveT = null;
+function saveTpl(){
+  if(!currentCase) return;
+  const obj = {};
+  TPL_FIELDS.forEach(f=>{ const el = $("tf_"+f.id); if(el) obj[f.id] = el.value; });
+  store(tplKey(currentCase.id), obj);
+  const sn = $("savenote"); if(sn){ sn.textContent = "Saved"; clearTimeout(saveT); saveT = setTimeout(()=>{ sn.textContent=""; }, 1200); }
+}
+function saveAbc(){
+  if(!currentCase) return;
+  store(abcKey(currentCase.id), {
+    c: ABC_ITEMS.map((_,i)=> !!($("abc_"+i) && $("abc_"+i).checked)),
+    n: ABC_ITEMS.map((_,i)=> ($("abcn_"+i) && $("abcn_"+i).value) || "")
+  });
+}
+
+/* =====================================================================
+   SELF-SCORING
+===================================================================== */
+const SYS_GROUPS = [
+  ["neuro","🧠 Neuro"], ["cv","❤️ CV"], ["resp","🫁 Resp"], ["renal","💧 Renal"],
+  ["gi","🍽️ GI / Nutrition"], ["heme","🩸 Heme/Onc"], ["id","🦠 ID"], ["endo","⚖️ Endo"],
+  ["msk","🔧 MSK / Skin"], ["lib","✅ ICU Liberation checklist"]
+];
+function goScore(){
+  const c = currentCase;
+  const tpl = load(tplKey(c.id), {});
+  const auto = autoMatches(c);
+  const prior = load(chkKey(c.id), null);
+  const checks = prior || auto;
+  app().innerHTML = `
+  <div class="wrap">
+    <div class="card">
+      <h2>Check your work: ${esc(c.listName)}</h2>
+      <p>Below is the gold-standard list of what a strong pre-round on this patient would capture. Your template text was scanned for each item (common abbreviations included); anything found is pre-checked and tagged <span class="foundtag">found in your notes</span>. The scan is imperfect, so correct it in both directions: check anything you captured that it missed, and uncheck anything you did not actually have. Your template answers are shown underneath for reference.</p>
+    </div>
+    <div class="card">
+      <h3>Gold-standard items (by system)</h3>
+      ${SYS_GROUPS.map(([sys,label])=>{
+        if(!c.checklist.some(it=>it.sys===sys)) return "";
+        return `<div class="chk-cat">${esc(label)}</div>` +
+        c.checklist.map((it,i)=> it.sys!==sys ? "" : `
+          <div class="chk-item">
+            <input type="checkbox" id="ck_${i}" ${checks[i]?"checked":""} onchange="saveChk()">
+            <label for="ck_${i}">${esc(it.text)}${auto[i]?'<span class="foundtag">found in your notes</span>':""}</label>
+          </div>`).join("");
+      }).join("")}
+      <div style="margin-top:16px; display:flex; gap:10px;">
+        <button class="btn" onclick="goResults()">Show my results</button>
+        <button class="btn secondary" onclick="renderSim()">Back to the chart</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Your template answers (for reference)</h3>
+      <div class="answers-review">
+        ${TPL_FIELDS.map(f=>`<h4>${esc(f.label)}</h4><div class="ans ${tpl[f.id]?"":"empty"}">${tpl[f.id]?esc(tpl[f.id]):"(left blank)"}</div>`).join("")}
+      </div>
+    </div>
+  </div>`;
+  window.scrollTo(0,0);
+}
+function saveChk(){
+  const c = currentCase;
+  const arr = c.checklist.map((_,i)=> !!($("ck_"+i) && $("ck_"+i).checked));
+  store(chkKey(c.id), arr);
+}
+function goResults(){
+  saveChk();
+  const c = currentCase;
+  const checks = load(chkKey(c.id), []);
+  const total = c.checklist.length;
+  const got = checks.filter(Boolean).length;
+  store(doneKey(c.id), {got, total});
+  const missed = c.checklist.filter((_,i)=>!checks[i]);
+  const hit = c.checklist.filter((_,i)=>checks[i]);
+  app().innerHTML = `
+  <div class="wrap">
+    <div class="card" style="text-align:center;">
+      <h2>${esc(c.listName)}: pre-round results</h2>
+      <div class="score-big">${got} / ${total}</div>
+      <p class="muted">${got===total?"Complete pre-round. Nothing slipped past you.":
+        got>=total*0.75?"Strong pre-round. Review what you missed below.":
+        got>=total*0.5?"Decent start. The missed items below are the habit-builders.":
+        "This is why we practice. Read every missed item and its reasoning, then try another case."}</p>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:center; margin-bottom:16px; flex-wrap:wrap;">
+      <button class="btn secondary" onclick="goScore()">Back to my checklist</button>
+      <button class="btn secondary" onclick="renderSim()">Revisit this chart</button>
+      <button class="btn" onclick="goHome()">Patient list</button>
+    </div>
+    <div class="card">
+      <h3>By system</h3>
+      ${SYS_GROUPS.map(([sys,label])=>{
+        const items = c.checklist.map((it,i)=>({it,i})).filter(o=>o.it.sys===sys);
+        if(!items.length) return "";
+        const g = items.filter(o=>checks[o.i]).length;
+        return `<div class="catbar"><span class="cb-label">${esc(label)}</span>
+          <span class="cb-track"><span class="cb-fill" style="width:${items.length?Math.round(100*g/items.length):0}%"></span></span>
+          <span class="cb-num">${g}/${items.length}</span></div>`;
+      }).join("")}
+    </div>
+    ${missed.length?`<div class="card">
+      <h3>What you missed, and why it matters</h3>
+      ${missed.map(it=>`<div class="missed"><div class="mt">${esc(it.text)}</div><div class="mw">${esc(it.why)}</div></div>`).join("")}
+    </div>`:""}
+    ${hit.length?`<div class="card">
+      <h3>What you caught</h3>
+      ${hit.map(it=>`<div class="gotit">${esc(it.text)}</div>`).join("")}
+    </div>`:""}
+    <div style="display:flex; gap:10px; justify-content:center; margin-bottom:30px;">
+      <button class="btn" onclick="goHome()">Back to patient list</button>
+      <button class="btn secondary" onclick="renderSim()">Revisit this chart</button>
+    </div>
+  </div>`;
+  window.scrollTo(0,0);
+}
+
+/* =====================================================================
+   FACILITATOR
+===================================================================== */
+function openFacilitator(btn){
+  if(btn && !btn.dataset.armed){
+    btn.dataset.armed = "1";
+    btn.textContent = "This view reveals the answers for all cases. Click again to open.";
+    return;
+  }
+  stopTimer(); currentCase = null;
+  renderFacilitatorList();
+}
+function renderFacilitatorList(){
+  facDebrief = false;
+  app().innerHTML = `
+  <div class="wrap">
+    <div class="fac-banner">FACILITATOR VIEW: contains answers. Do not project until the group is ready to debrief.</div>
+    <div class="card">
+      <h2>Facilitator debrief</h2>
+      <p>Suggested flow per case (~15 min): (1) ask one intern to present their pre-round as if on rounds, (2) reveal the gold-standard checklist and let the group compare, (3) walk the planted pitfalls, (4) run the discussion questions, (5) read or project the model presentation.</p>
+    </div>
+    <div class="case-grid">
+      ${CASES.map(c=>`<div class="case-card">
+        <span class="bed">${esc(c.bed)}</span>
+        <span class="nm">${esc(c.listName)}</span>
+        <span class="dx">${esc(c.dxTeaser)}</span>
+        <button class="btn" onclick="renderDebrief('${c.id}')">Open debrief</button>
+      </div>`).join("")}
+    </div>
+  </div>`;
+  window.scrollTo(0,0);
+}
+function renderDebrief(id){
+  const c = caseById(id);
+  facDebrief = true;
+  app().innerHTML = `
+  <div class="wrap">
+    <div class="fac-banner">FACILITATOR VIEW: ${esc(c.listName)} (${esc(c.dxTeaser)})</div>
+    <div class="card">
+      <h3>Planted pitfalls (what this case is designed to teach)</h3>
+      ${c.debrief.pitfalls.map(x=>`<div class="pitfall">${esc(x)}</div>`).join("")}
+    </div>
+    <div class="card">
+      <h3>Gold-standard checklist with teaching rationale (by system)</h3>
+      ${SYS_GROUPS.map(([sys,label])=>{
+        const items = c.checklist.filter(it=>it.sys===sys);
+        if(!items.length) return "";
+        return `<div class="chk-cat">${esc(label)}</div>` + items.map(it=>
+          `<div class="missed" style="border-left-color:var(--blue); background:var(--blue-light);">
+             <div class="mt">${esc(it.text)}</div><div class="mw">${esc(it.why)}</div></div>`).join("");
+      }).join("")}
+    </div>
+    <div class="card">
+      <h3>Teaching pearls</h3>
+      ${c.debrief.pearls.map(x=>`<div class="pearl">${esc(x)}</div>`).join("")}
+    </div>
+    <div class="card">
+      <h3>Discussion questions</h3>
+      <ul class="tight">${c.debrief.discussion.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+    </div>
+    <div class="card">
+      <h3>Model pre-rounds presentation</h3>
+      <div class="model-pres">${esc(c.debrief.model)}</div>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:center; margin-bottom:30px;">
+      <button class="btn secondary" onclick="renderFacilitatorList()">All cases</button>
+      <button class="btn" onclick="goHome()">Exit facilitator view</button>
+    </div>
+  </div>`;
+  window.scrollTo(0,0);
+}
+
+goHome();
+</script>
+</body>
+</html>
